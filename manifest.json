@@ -1,0 +1,10 @@
+{
+  "name": "Welwitschia Lunar VR",
+  "short_name": "Welwitschia VR",
+  "description": "Simulador Lunar Educativo em Realidade Virtual — NASA Space Apps Angola",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#020308",
+  "theme_color": "#020308"
+}
