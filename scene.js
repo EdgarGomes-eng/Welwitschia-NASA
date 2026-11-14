@@ -1,4 +1,4 @@
-// scene.js — Construção do Cenário Lunar Realista, Divisão VR Horizontal e HUD Responsivo
+// scene.js — Estereoscopia Real (Olho Esquerdo / Olho Direito com Paralaxe 3D) + Cenário Lunar
 window.WelwitschiaScene = (() => {
   const S = window.WelwitschiaShaders;
 
@@ -7,11 +7,13 @@ window.WelwitschiaScene = (() => {
     scene.background = new THREE.Color(0x020308);
     scene.fog = new THREE.FogExp2(0x050711, 0.0045);
 
-    const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 600);
-    const rig = new THREE.Group();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 600);
     camera.position.set(0, 1.65, 0);
-    rig.add(camera);
-    scene.add(rig);
+    scene.add(camera);
+
+    // Câmaras dedicadas para Olho Esquerdo e Olho Direito com frustum assimétrico real
+    const camL = new THREE.PerspectiveCamera(75, 1, 0.1, 600);
+    const camR = new THREE.PerspectiveCamera(75, 1, 0.1, 600);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -411,28 +413,32 @@ window.WelwitschiaScene = (() => {
     scene.add(leakBeacon);
     interactables.push(leakBeacon);
 
-    // --- HUD ESPACIAL ACOPLADO À CÂMARA VR COM QUEBRA DE LINHA SEGURA ---
+    // --- HUD ESPACIAL NO ESPAÇO 3D (A -3.0m PARA CONVERGÊNCIA ESTEREOSCÓPICA CONFORTÁVEL) ---
     const hudCanvas = document.createElement('canvas');
     hudCanvas.width = 1024; hudCanvas.height = 512;
     const hudCtx = hudCanvas.getContext('2d');
     const hudTex = new THREE.CanvasTexture(hudCanvas);
+
+    // Colocamos o HUD na cena a 3.0m de distância na direção do olhar (com profundidade 3D real!)
+    const hudGroup = new THREE.Group();
+    scene.add(hudGroup);
+
     const hudPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.55, 0.78), // Dimensão segura dentro do campo de visão das lentes VR
+      new THREE.PlaneGeometry(2.6, 1.3),
       new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthTest: false })
     );
-    hudPlane.position.set(0, 0, -1.65);
+    hudPlane.position.set(0, 0, -3.0);
     hudPlane.raycast = () => {};
-    camera.add(hudPlane);
+    hudGroup.add(hudPlane);
 
     const reticleRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.014, 0.024, 32),
+      new THREE.RingGeometry(0.024, 0.042, 32),
       new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide, depthTest: false })
     );
-    reticleRing.position.z = -1.2;
+    reticleRing.position.set(0, 0, -2.8);
     reticleRing.raycast = () => {};
-    camera.add(reticleRing);
+    hudGroup.add(reticleRing);
 
-    // Função de quebra automática de linhas para nenhuma notificação sair da caixa
     function drawWrappedText(ctx, text, centerX, startY, maxWidth, lineHeight) {
       const paragraphs = String(text).split('\n');
       const allLines = [];
@@ -462,7 +468,6 @@ window.WelwitschiaScene = (() => {
       const g = hudCtx;
       g.clearRect(0, 0, 1024, 512);
 
-      // Barra superior compacta com margem lateral segura (x: 152 até 872)
       if (state.started && !state.over) {
         const boxX = 152, boxW = 720;
         g.fillStyle = 'rgba(5, 14, 36, 0.80)';
@@ -486,7 +491,6 @@ window.WelwitschiaScene = (() => {
         );
       }
 
-      // Caixa de notificação inferior com quebra de linha automática e margem larga
       if (state.note) {
         const boxX = 152, boxW = 720, boxY = 384, boxH = 112;
         g.fillStyle = state.alertFlash ? 'rgba(145, 15, 25, 0.92)' : 'rgba(5, 14, 36, 0.88)';
@@ -503,17 +507,47 @@ window.WelwitschiaScene = (() => {
       hudTex.needsUpdate = true;
     }
 
-    // --- RENDERIZADOR ESTEREOSCÓPICO HORIZONTAL LADO A LADO ---
+    // --- CÁLCULO ESTEREOSCÓPICO REAL (OFF-AXIS FRUSTUM PARA OLHO ESQUERDO E DIREITO) ---
     let stereoMode = false;
-    const stereoCam = new THREE.StereoCamera();
-    stereoCam.eyeSep = 0.064;
+    const EYE_SEP = 0.068; // 6.8 cm de separação entre olhos para efeito 3D bem visível
+    const FOCAL_DIST = 4.5; // Plano de convergência onde os olhos se cruzam naturalmente
+
+    function updateStereoCameras(eyeAspect) {
+      camera.updateMatrixWorld(true);
+
+      const halfEye = EYE_SEP * 0.5;
+      const near = camera.near;
+      const far = camera.far;
+      const top = near * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+      const bottom = -top;
+      const a = eyeAspect * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * FOCAL_DIST;
+
+      // Posição e orientação base da cabeça
+      const headPos = camera.position;
+      const headQuat = camera.quaternion;
+      const rightVec = new THREE.Vector3(1, 0, 0).applyQuaternion(headQuat);
+
+      // OLHO ESQUERDO: deslocado -halfEye para a esquerda + frustum assimétrico
+      camL.position.copy(headPos).addScaledVector(rightVec, -halfEye);
+      camL.quaternion.copy(headQuat);
+      const bL = a - halfEye;
+      const cL = a + halfEye;
+      camL.projectionMatrix.makePerspective((-bL * near) / FOCAL_DIST, (cL * near) / FOCAL_DIST, top, bottom, near, far);
+      camL.projectionMatrixInverse.copy(camL.projectionMatrix).invert();
+
+      // OLHO DIREITO: deslocado +halfEye para a direita + frustum assimétrico
+      camR.position.copy(headPos).addScaledVector(rightVec, halfEye);
+      camR.quaternion.copy(headQuat);
+      const bR = a + halfEye;
+      const cR = a - halfEye;
+      camR.projectionMatrix.makePerspective((-bR * near) / FOCAL_DIST, (cR * near) / FOCAL_DIST, top, bottom, near, far);
+      camR.projectionMatrixInverse.copy(camR.projectionMatrix).invert();
+    }
 
     function syncRendererSize() {
       let w = window.innerWidth;
       let h = window.innerHeight;
 
-      // Se o modo VR estiver ativo e o telemóvel ainda estiver em pé (portrait),
-      // ativamos a rotação CSS horizontal e trocamos largura/altura para a divisão ficar lado a lado!
       if (stereoMode && h > w) {
         container.classList.add('force-landscape');
         [w, h] = [h, w];
@@ -529,6 +563,10 @@ window.WelwitschiaScene = (() => {
     }
 
     function renderFrame() {
+      // Faz o HUD acompanhar suavemente a cabeça no espaço 3D (com paralaxe estereoscópica real!)
+      hudGroup.position.copy(camera.position);
+      hudGroup.quaternion.copy(camera.quaternion);
+
       const size = renderer.getSize(new THREE.Vector2());
       const w = size.x, h = size.y;
 
@@ -537,21 +575,21 @@ window.WelwitschiaScene = (() => {
         renderer.setViewport(0, 0, w, h);
         renderer.render(scene, camera);
       } else {
-        camera.aspect = (w / 2) / h;
-        camera.updateProjectionMatrix();
-        camera.updateMatrixWorld();
-        stereoCam.update(camera);
+        const eyeW = Math.floor(w / 2);
+        const eyeAspect = eyeW / h;
+        updateStereoCameras(eyeAspect);
+
         renderer.setScissorTest(true);
 
-        // Olho Esquerdo (metade esquerda do ecrã horizontal)
-        renderer.setScissor(0, 0, w / 2, h);
-        renderer.setViewport(0, 0, w / 2, h);
-        renderer.render(scene, stereoCam.cameraL);
+        // Metade Esquerda -> Olho Esquerdo (vê mais o lado esquerdo dos objetos)
+        renderer.setScissor(0, 0, eyeW, h);
+        renderer.setViewport(0, 0, eyeW, h);
+        renderer.render(scene, camL);
 
-        // Olho Direito (metade direita do ecrã horizontal)
-        renderer.setScissor(w / 2, 0, w / 2, h);
-        renderer.setViewport(w / 2, 0, w / 2, h);
-        renderer.render(scene, stereoCam.cameraR);
+        // Metade Direita -> Olho Direito (vê mais o lado direito dos objetos)
+        renderer.setScissor(eyeW, 0, w - eyeW, h);
+        renderer.setViewport(eyeW, 0, w - eyeW, h);
+        renderer.render(scene, camR);
       }
     }
 
