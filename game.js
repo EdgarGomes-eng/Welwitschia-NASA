@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  *  WELWITSCHIA LUNAR — game.js
- *  Lógica da missão NASA, áudio sintetizado PT-AO e controlo VR Horizontal.
+ *  Experiência VR Imersiva em Primeira Pessoa (Visão Única Panorâmica 360°)
  * ============================================================================
  */
 (() => {
@@ -98,6 +98,7 @@
     }
 
     click() { this.tone(920, 0.045, 'square', 0.03); }
+    step() { this.tone(85, 0.11, 'sine', 0.05); }
     error() { this.tone(200, 0.14, 'square', 0.045); this.tone(150, 0.2, 'square', 0.045, 0.12); }
     success() { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this.tone(f, 0.2, 'triangle', 0.06, i * 0.085)); }
     alarm() {
@@ -142,12 +143,12 @@
   }
 
   const container = document.getElementById('canvas-container');
+  const visor = document.getElementById('helmet-visor');
   const overlay = document.getElementById('vr-overlay');
-  const btnVR = document.getElementById('btn-vr');
-  const btn360 = document.getElementById('btn-360');
+  const btnEnter = document.getElementById('btn-enter');
   const topControls = document.getElementById('top-controls');
   const btnMute = document.getElementById('btn-mute');
-  const exitVR = document.getElementById('exit-vr');
+  const btnExit = document.getElementById('btn-exit');
 
   const audio = new AudioEngine();
   const world = window.WelwitschiaScene.initScene(container);
@@ -162,7 +163,7 @@
   ];
 
   const MOD_NAMES = ['Suporte de Vida', 'Blindagem Solar', 'Estufas', 'Laboratório'];
-  const SAVE_KEY = 'welwitschia-lunar-vr-v5';
+  const SAVE_KEY = 'welwitschia-lunar-vr-v7';
 
   const state = {
     T: 300,
@@ -180,7 +181,7 @@
     nextEv: 28,
     fk: 0,
     dust: false,
-    note: 'Toca ou olha para INICIAR MISSÃO!',
+    note: 'Toca ou aponta o visor para INICIAR MISSÃO!',
     noteT: 999,
     alertT: 0
   };
@@ -211,7 +212,7 @@
     world.startBtn.visible = false;
     world.startBtn.position.y = -50;
     refreshScreens();
-    say('Missão iniciada! Sobrevive ao dia e à noite lunar olhando ou tocando nos painéis.');
+    say('Missão iniciada! Vira a cabeça para explorar a base e olhar para os anéis no chão para caminhar.');
     state.noteT = 8;
   }
 
@@ -292,6 +293,10 @@
       startMission();
     } else if (data.type === 'restart' && state.over) {
       location.reload();
+    } else if (data.type === 'move' && state.started) {
+      world.moveTo(data.x, data.z);
+      audio.step();
+      say(`A caminhar para: ${data.label}`, false);
     } else if (data.type === 'module' && state.started && !state.over) {
       const i = data.index;
       state.L[i] = (state.L[i] + 1) % 4;
@@ -313,7 +318,7 @@
     }
   }
 
-  // --- CONTROLO DE ORIENTAÇÃO (GIROSCÓPIO HORIZONTAL VR + TOQUE/RATO) ---
+  // --- HEAD TRACKING (GIROSCÓPIO EM TEMPO REAL) + ARRASTAR TOQUE/RATO ---
   let gyroEnabled = false;
   let deviceAlpha = 0, deviceBeta = 90, deviceGamma = 0;
   let yaw = 0, pitch = 0, isDragging = false, downX = 0, downY = 0, lastX = 0, lastY = 0;
@@ -339,13 +344,8 @@
 
   window.addEventListener('pointermove', (e) => {
     if (!isDragging) return;
-    if (world.isForcedLandscape()) {
-      yaw -= (e.clientY - lastY) * 0.004;
-      pitch = Math.max(-1.3, Math.min(1.3, pitch + (e.clientX - lastX) * 0.004));
-    } else {
-      yaw -= (e.clientX - lastX) * 0.004;
-      pitch = Math.max(-1.3, Math.min(1.3, pitch - (e.clientY - lastY) * 0.004));
-    }
+    yaw -= (e.clientX - lastX) * 0.004;
+    pitch = Math.max(-1.3, Math.min(1.3, pitch - (e.clientY - lastY) * 0.004));
     lastX = e.clientX;
     lastY = e.clientY;
   });
@@ -354,15 +354,9 @@
     const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
     isDragging = false;
     if (moved < 12) {
-      const w = window.innerWidth, h = window.innerHeight;
-      if (world.isForcedLandscape()) {
-        // Mapeia o toque quando o canvas está rodado 90deg para modo VR horizontal
-        pointerVec.x = (e.clientY / h) * 2 - 1;
-        pointerVec.y = (e.clientX / w) * 2 - 1;
-      } else {
-        pointerVec.x = (e.clientX / w) * 2 - 1;
-        pointerVec.y = -(e.clientY / h) * 2 + 1;
-      }
+      const rect = container.getBoundingClientRect();
+      pointerVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointerVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointerVec, world.camera);
       const hits = raycaster.intersectObjects(world.interactables, false);
       const hit = hits.find(h => h.object.visible);
@@ -373,25 +367,26 @@
   const euler = new THREE.Euler();
   const q0 = new THREE.Quaternion();
   const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+  const targetQuat = new THREE.Quaternion();
 
   function updateCameraOrientation() {
     if (gyroEnabled) {
       const alpha = THREE.MathUtils.degToRad(deviceAlpha);
       const beta = THREE.MathUtils.degToRad(deviceBeta);
       const gamma = THREE.MathUtils.degToRad(deviceGamma);
-      // Se forçámos paisagem via CSS, compensa 90 graus para o horizonte ficar nivelado nos óculos VR
-      const screenAngle = world.isForcedLandscape() ? 90 : (window.orientation || 0);
-      const orient = THREE.MathUtils.degToRad(screenAngle);
+      const orient = THREE.MathUtils.degToRad(window.orientation || 0);
 
       euler.set(beta, alpha, -gamma, 'YXZ');
       q0.setFromEuler(euler);
       q0.multiply(q1);
       q0.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -orient));
-      world.camera.quaternion.copy(q0);
+      targetQuat.copy(q0);
     } else {
       euler.set(pitch, yaw, 0, 'YXZ');
-      world.camera.quaternion.setFromEuler(euler);
+      targetQuat.setFromEuler(euler);
     }
+    // Slerp suave para evitar tremores do sensor do telemóvel (conforto VR)
+    world.camera.quaternion.slerp(targetQuat, 0.25);
   }
 
   // --- RAYCASTER POR OLHAR (GAZE FUSE DE 0.85s) ---
@@ -411,7 +406,7 @@
       } else {
         gazeTimer += dt;
         const progress = Math.min(1, gazeTimer / FUSE_TIME);
-        const sc = 1 + progress * 0.65;
+        const sc = 1 + progress * 0.7;
         world.reticleRing.scale.set(sc, sc, 1);
         world.reticleRing.material.color.setHex(progress >= 1 ? 0x5ce65c : 0xffcb05);
 
@@ -428,13 +423,13 @@
     }
   }
 
-  async function enterExperience(useStereo) {
+  btnEnter.addEventListener('click', async () => {
     audio.init();
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       try { await DeviceOrientationEvent.requestPermission(); } catch (_) {}
     }
 
-    if (useStereo && document.documentElement.requestFullscreen) {
+    if (document.documentElement.requestFullscreen) {
       try {
         await document.documentElement.requestFullscreen();
         if (screen.orientation && screen.orientation.lock) {
@@ -443,24 +438,20 @@
       } catch (_) {}
     }
 
-    world.setStereoMode(useStereo);
     overlay.classList.add('hidden');
+    visor.style.display = 'block';
     topControls.style.display = 'flex';
-
-    audio.speak('Bem-vindo ao Welwitschia Lunar! Coloca o telemóvel na horizontal nos óculos e olha para iniciar a missão.');
-  }
-
-  btnVR.addEventListener('click', () => enterExperience(true));
-  btn360.addEventListener('click', () => enterExperience(false));
+    audio.speak('Capacete espacial ativado! Vira a cabeça para explorar a Lua e inicia a missão.');
+  });
 
   btnMute.addEventListener('click', () => {
     audio.setMuted(!audio.muted);
     btnMute.textContent = audio.muted ? '🔇 Mudo' : '🔊 Som';
   });
 
-  exitVR.addEventListener('click', () => {
-    world.setStereoMode(false);
+  btnExit.addEventListener('click', () => {
     overlay.classList.remove('hidden');
+    visor.style.display = 'none';
     topControls.style.display = 'none';
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   });
