@@ -25,7 +25,6 @@ window.WelwitschiaShaders = (() => {
     return val;
   };
 
-  // Gera par Albedo + Bump/Normal procedural para o regolito lunar
   function createLunarRegolithTextures() {
     const size = 512;
     const colCanvas = document.createElement('canvas');
@@ -47,8 +46,7 @@ window.WelwitschiaShaders = (() => {
         const grit = hash(x, y) * 0.18;
         const h = Math.min(1, Math.max(0, n1 * 0.55 + n2 * 0.3 + grit));
 
-        // Tom cinza-mineral quente sob luz solar intensa
-        const base = 115 + h * 95;
+        const base = 118 + h * 95;
         cImg.data[idx] = base * 1.02;
         cImg.data[idx + 1] = base * 1.00;
         cImg.data[idx + 2] = base * 0.96;
@@ -62,7 +60,6 @@ window.WelwitschiaShaders = (() => {
     cCtx.putImageData(cImg, 0, 0);
     bCtx.putImageData(bImg, 0, 0);
 
-    // Adiciona micro-crateras
     for (let i = 0; i < 160; i++) {
       const cx = Math.random() * size, cy = Math.random() * size;
       const r = 2 + Math.random() * 14;
@@ -86,7 +83,6 @@ window.WelwitschiaShaders = (() => {
     return { map, bumpMap };
   }
 
-  // Folha térmica dourada Kapton (estilo módulos lunares NASA)
   function createKaptonGoldTexture() {
     const size = 256;
     const c = document.createElement('canvas');
@@ -111,7 +107,6 @@ window.WelwitschiaShaders = (() => {
     return tex;
   }
 
-  // Painel Solar Fotovoltaico Azul-Cobalto Vivo com células e barramentos prateados
   function createSolarPanelTexture() {
     const size = 512;
     const c = document.createElement('canvas');
@@ -131,7 +126,6 @@ window.WelwitschiaShaders = (() => {
         g.strokeStyle = '#6ec6ff';
         g.lineWidth = 2;
         g.strokeRect(x + 2, y + 2, step - 4, step - 4);
-        // Linhas finas de captação
         g.strokeStyle = 'rgba(180, 225, 255, 0.28)';
         g.lineWidth = 1;
         for (let k = 12; k < step; k += 12) {
@@ -148,14 +142,12 @@ window.WelwitschiaShaders = (() => {
     return tex;
   }
 
-  // Textura da Terra com destaque para África / Angola e nuvens vivas
   function createEarthTexture() {
     const w = 512, h = 256;
     const c = document.createElement('canvas');
     c.width = w; c.height = h;
     const g = c.getContext('2d');
 
-    // Oceano azul profundo vivo
     const ocean = g.createLinearGradient(0, 0, 0, h);
     ocean.addColorStop(0, '#1e64c8');
     ocean.addColorStop(0.5, '#0f4c9c');
@@ -163,32 +155,27 @@ window.WelwitschiaShaders = (() => {
     g.fillStyle = ocean;
     g.fillRect(0, 0, w, h);
 
-    // Continentes estilizados (com África bem visível no centro)
     g.fillStyle = '#388e3c';
-    // África
     g.beginPath();
     g.ellipse(w * 0.52, h * 0.54, 34, 52, -0.15, 0, Math.PI * 2);
     g.fill();
-    // Deserto do Namibe / Sahara em tons dourados
+
     g.fillStyle = '#d4a359';
     g.beginPath();
     g.ellipse(w * 0.51, h * 0.38, 26, 15, 0, 0, Math.PI * 2);
     g.ellipse(w * 0.52, h * 0.72, 12, 16, 0, 0, Math.PI * 2);
     g.fill();
 
-    // Europa / Ásia / Américas
     g.fillStyle = '#2e7d32';
     g.beginPath();
     g.ellipse(w * 0.65, h * 0.30, 55, 25, 0.1, 0, Math.PI * 2);
     g.ellipse(w * 0.25, h * 0.45, 28, 48, 0.2, 0, Math.PI * 2);
     g.fill();
 
-    // Calotas polares
     g.fillStyle = '#f4f8ff';
     g.fillRect(0, 0, w, 16);
     g.fillRect(0, h - 16, w, 16);
 
-    // Nuvens atmosféricas
     for (let i = 0; i < 90; i++) {
       g.fillStyle = `rgba(255, 255, 255, ${0.18 + Math.random() * 0.32})`;
       g.beginPath();
@@ -198,7 +185,6 @@ window.WelwitschiaShaders = (() => {
     return new THREE.CanvasTexture(c);
   }
 
-  // Shader Fresnel para o brilho azul atmosférico da Terra
   function createAtmosphereMaterial() {
     return new THREE.ShaderMaterial({
       transparent: true,
@@ -221,32 +207,27 @@ window.WelwitschiaShaders = (() => {
     });
   }
 
-  // Emblema Oficial da Missão: WELWITSCHIA LUNAR — ANGOLA / ARTEMIS
   function createMissionEmblemTexture() {
     const c = document.createElement('canvas');
     c.width = 512; c.height = 512;
     const g = c.getContext('2d');
 
-    // Fundo escudo espacial
     g.fillStyle = '#07112b';
     g.fillRect(0, 0, 512, 512);
 
-    // Anel exterior dourado e vermelho/preto (cores de Angola)
     g.lineWidth = 18;
-    g.strokeStyle = '#ce1126'; // Vermelho Angola
+    g.strokeStyle = '#ce1126';
     g.beginPath(); g.arc(256, 256, 226, Math.PI, Math.PI * 2); g.stroke();
-    g.strokeStyle = '#111111'; // Preto Angola
+    g.strokeStyle = '#111111';
     g.beginPath(); g.arc(256, 256, 226, 0, Math.PI); g.stroke();
 
     g.lineWidth = 6;
-    g.strokeStyle = '#ffcb05'; // Dourado Estrela/Sol
+    g.strokeStyle = '#ffcb05';
     g.beginPath(); g.arc(256, 256, 214, 0, Math.PI * 2); g.stroke();
 
-    // Superfície lunar na base do emblema
     g.fillStyle = '#8b95a8';
     g.beginPath(); g.arc(256, 460, 230, Math.PI, Math.PI * 2); g.fill();
 
-    // Planta Welwitschia estilizada em verde vivo brotando na Lua
     g.strokeStyle = '#5ce65c';
     g.lineWidth = 14;
     g.lineCap = 'round';
@@ -257,7 +238,6 @@ window.WelwitschiaShaders = (() => {
       g.stroke();
     });
 
-    // Trajetória Artemis (A) rumo às estrelas
     g.strokeStyle = '#00e5ff';
     g.lineWidth = 8;
     g.beginPath();
@@ -266,7 +246,6 @@ window.WelwitschiaShaders = (() => {
     g.lineTo(337, 295);
     g.stroke();
 
-    // Textos
     g.fillStyle = '#ffffff';
     g.font = 'bold 30px sans-serif';
     g.textAlign = 'center';
@@ -278,7 +257,6 @@ window.WelwitschiaShaders = (() => {
     return new THREE.CanvasTexture(c);
   }
 
-  // Gera textura dinâmica para os ecrãs holográficos dos 4 módulos
   function createHoloScreenCanvas(title, colorHex) {
     const c = document.createElement('canvas');
     c.width = 512; c.height = 320;
@@ -287,15 +265,13 @@ window.WelwitschiaShaders = (() => {
 
     function render(level, statusText) {
       g.clearRect(0, 0, 512, 320);
-      // Fundo holográfico translúcido
-      g.fillStyle = 'rgba(6, 18, 44, 0.86)';
+      g.fillStyle = 'rgba(6, 18, 44, 0.88)';
       g.fillRect(8, 8, 496, 304);
 
       g.strokeStyle = colorHex;
       g.lineWidth = 6;
       g.strokeRect(8, 8, 496, 304);
 
-      // Cabeçalho
       g.fillStyle = colorHex;
       g.fillRect(8, 8, 496, 56);
       g.fillStyle = '#04091a';
@@ -303,7 +279,6 @@ window.WelwitschiaShaders = (() => {
       g.textAlign = 'center';
       g.fillText(title.toUpperCase(), 256, 46);
 
-      // Barras de potência (Níveis 1, 2, 3)
       for (let i = 0; i < 3; i++) {
         const bx = 56 + i * 140;
         g.fillStyle = i < level ? colorHex : 'rgba(255,255,255,0.12)';
@@ -317,13 +292,12 @@ window.WelwitschiaShaders = (() => {
         g.fillText(`NV ${i + 1}`, bx + 59, 152);
       }
 
-      // Estado inferior
       g.fillStyle = '#ffffff';
       g.font = 'bold 24px sans-serif';
       g.fillText(statusText || `POTÊNCIA ATIVA: NÍVEL ${level}/3`, 256, 245);
       g.fillStyle = '#a8c7fa';
       g.font = '18px sans-serif';
-      g.fillText('OLHA AQUI PARA ALTERAR ENERGIA', 256, 282);
+      g.fillText('OLHA OU TOCA PARA ALTERAR ENERGIA', 256, 282);
 
       tex.needsUpdate = true;
     }

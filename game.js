@@ -2,275 +2,588 @@
  * ============================================================================
  *  WELWITSCHIA LUNAR — game.js
  *  Lógica da missão NASA, objectivos, eventos dinâmicos, áudio sintetizado
- *  PT-AO (voz + ambiente) e gravação offline com MediaRecorder.
+ *  PT-AO (voz + ambiente) e controlo duplo VR (Gaze + Toque/Clique).
  * ============================================================================
  */
-import { LunarWorld } from './scene.js';
-
-const $ = (sel) => document.querySelector(sel);
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const pad2 = (n) => String(Math.max(0, Math.floor(n))).padStart(2, '0');
-const fmtTime = (sec) => `${pad2(sec / 60)}:${pad2(sec % 60)}`;
-const damp = (a, b, lambda, dt) => a + (b - a) * (1 - Math.exp(-lambda * dt));
-
-/* ==================================================================== *
- *  ÁUDIO — tudo sintetizado / falado localmente (sem ficheiros)
- * ==================================================================== */
-class AudioEngine {
-  constructor() {
-    this.ctx = null;
-    this.master = null;
-    this.streamDest = null;
-    this.windGain = null;
-    this.windFilter = null;
-    this.drillGain = null;
-    this.muted = false;
-    this._drill = false;
-    this._noise = null;
-    this._started = false;
-    this._voice = null;
-  }
-
-  init() {
-    if (this.ctx) {
-      if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
-      return;
-    }
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    try {
-      this.ctx = new AC();
-    } catch (_) {
-      return;
-    }
-    const ctx = this.ctx;
-    this.master = ctx.createGain();
-    this.master.gain.value = this.muted ? 0 : 0.72;
-    this.master.connect(ctx.destination);
-
-    try {
-      this.streamDest = ctx.createMediaStreamDestination();
-      this.master.connect(this.streamDest);
-    } catch (_) {
+(() => {
+  /* ==================================================================== *
+   *  ÁUDIO — tudo sintetizado / falado localmente (sem ficheiros)
+   * ==================================================================== */
+  class AudioEngine {
+    constructor() {
+      this.ctx = null;
+      this.master = null;
       this.streamDest = null;
+      this.windGain = null;
+      this.windFilter = null;
+      this.drillGain = null;
+      this.muted = false;
+      this._drill = false;
+      this._noise = null;
+      this._started = false;
+      this._voice = null;
     }
 
-    this._noise = this._makeNoise(3.2);
+    init() {
+      if (this.ctx) {
+        if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+        return;
+      }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      try {
+        this.ctx = new AC();
+      } catch (_) {
+        return;
+      }
+      const ctx = this.ctx;
+      this.master = ctx.createGain();
+      this.master.gain.value = this.muted ? 0 : 0.72;
+      this.master.connect(ctx.destination);
 
-    // vento lunar / poeira
-    const windSrc = ctx.createBufferSource();
-    windSrc.buffer = this._noise;
-    windSrc.loop = true;
-    this.windFilter = ctx.createBiquadFilter();
-    this.windFilter.type = 'lowpass';
-    this.windFilter.frequency.value = 380;
-    this.windFilter.Q.value = 0.4;
-    this.windGain = ctx.createGain();
-    this.windGain.gain.value = 0.035;
-    windSrc.connect(this.windFilter);
-    this.windFilter.connect(this.windGain);
-    this.windGain.connect(this.master);
-    windSrc.start();
+      try {
+        this.streamDest = ctx.createMediaStreamDestination();
+        this.master.connect(this.streamDest);
+      } catch (_) {
+        this.streamDest = null;
+      }
 
-    // zumbido do fato / suporte de vida
-    const hum = ctx.createOscillator();
-    hum.type = 'sine';
-    hum.frequency.value = 47;
-    const humGain = ctx.createGain();
-    humGain.gain.value = 0.032;
-    hum.connect(humGain);
-    humGain.connect(this.master);
-    hum.start();
+      this._noise = this._makeNoise(3.2);
 
-    const hum2 = ctx.createOscillator();
-    hum2.type = 'triangle';
-    hum2.frequency.value = 94;
-    const hum2Gain = ctx.createGain();
-    hum2Gain.gain.value = 0.008;
-    hum2.connect(hum2Gain);
-    hum2Gain.connect(this.master);
-    hum2.start();
+      // vento lunar / poeira
+      const windSrc = ctx.createBufferSource();
+      windSrc.buffer = this._noise;
+      windSrc.loop = true;
+      this.windFilter = ctx.createBiquadFilter();
+      this.windFilter.type = 'lowpass';
+      this.windFilter.frequency.value = 380;
+      this.windFilter.Q.value = 0.4;
+      this.windGain = ctx.createGain();
+      this.windGain.gain.value = 0.035;
+      windSrc.connect(this.windFilter);
+      this.windFilter.connect(this.windGain);
+      this.windGain.connect(this.master);
+      windSrc.start();
 
-    // broca
-    const drillSrc = ctx.createBufferSource();
-    drillSrc.buffer = this._noise;
-    drillSrc.loop = true;
-    const drillFilter = ctx.createBiquadFilter();
-    drillFilter.type = 'bandpass';
-    drillFilter.frequency.value = 950;
-    drillFilter.Q.value = 0.85;
-    this.drillGain = ctx.createGain();
-    this.drillGain.gain.value = 0;
-    drillSrc.connect(drillFilter);
-    drillFilter.connect(this.drillGain);
-    this.drillGain.connect(this.master);
-    drillSrc.start();
+      // zumbido do fato / suporte de vida
+      const hum = ctx.createOscillator();
+      hum.type = 'sine';
+      hum.frequency.value = 47;
+      const humGain = ctx.createGain();
+      humGain.gain.value = 0.032;
+      hum.connect(humGain);
+      humGain.connect(this.master);
+      hum.start();
 
-    this._started = true;
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-  }
+      const hum2 = ctx.createOscillator();
+      hum2.type = 'triangle';
+      hum2.frequency.value = 94;
+      const hum2Gain = ctx.createGain();
+      hum2Gain.gain.value = 0.008;
+      hum2.connect(hum2Gain);
+      hum2Gain.connect(this.master);
+      hum2.start();
 
-  _makeNoise(seconds) {
-    const rate = this.ctx.sampleRate;
-    const len = Math.floor(rate * seconds);
-    const buf = this.ctx.createBuffer(1, len, rate);
-    const data = buf.getChannelData(0);
-    let last = 0;
-    for (let i = 0; i < len; i++) {
-      const white = Math.random() * 2 - 1;
-      last = (last + 0.02 * white) / 1.02;
-      data[i] = last * 2.4;
+      this._started = true;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     }
-    return buf;
-  }
 
-  setMuted(muted) {
-    this.muted = !!muted;
-    if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(this.muted ? 0 : 0.72, this.ctx.currentTime, 0.04);
+    _makeNoise(seconds) {
+      const rate = this.ctx.sampleRate;
+      const len = Math.floor(rate * seconds);
+      const buf = this.ctx.createBuffer(1, len, rate);
+      const data = buf.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < len; i++) {
+        const white = Math.random() * 2 - 1;
+        last = (last + 0.02 * white) / 1.02;
+        data[i] = last * 2.4;
+      }
+      return buf;
     }
-    if (this.muted && typeof speechSynthesis !== 'undefined') {
-      try { speechSynthesis.cancel(); } catch (_) {}
+
+    setMuted(muted) {
+      this.muted = !!muted;
+      if (this.master && this.ctx) {
+        this.master.gain.setTargetAtTime(this.muted ? 0 : 0.72, this.ctx.currentTime, 0.04);
+      }
+      if (this.muted && typeof speechSynthesis !== 'undefined') {
+        try { speechSynthesis.cancel(); } catch (_) {}
+      }
+    }
+
+    tone(freq = 440, dur = 0.12, type = 'sine', vol = 0.07, delay = 0, slideTo = null) {
+      if (!this.ctx || this.muted) return;
+      const t0 = this.ctx.currentTime + delay;
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, t0);
+      if (slideTo) {
+        o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + dur);
+      }
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g);
+      g.connect(this.master);
+      o.start(t0);
+      o.stop(t0 + dur + 0.06);
+    }
+
+    click() {
+      this.tone(920, 0.045, 'square', 0.03);
+    }
+
+    error() {
+      this.tone(200, 0.14, 'square', 0.045);
+      this.tone(150, 0.2, 'square', 0.045, 0.12);
+    }
+
+    success() {
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((f, i) => this.tone(f, 0.2, 'triangle', 0.06, i * 0.085));
+    }
+
+    alarm() {
+      for (let i = 0; i < 3; i++) {
+        this.tone(880, 0.12, 'sawtooth', 0.04, i * 0.26);
+        this.tone(620, 0.12, 'sawtooth', 0.035, i * 0.26 + 0.13);
+      }
+    }
+
+    setStorm(level) {
+      if (!this.ctx || !this.windGain) return;
+      const t = this.ctx.currentTime;
+      this.windGain.gain.setTargetAtTime(0.035 + level * 0.32, t, 1.4);
+      this.windFilter.frequency.setTargetAtTime(360 + level * 820, t, 1.4);
+    }
+
+    _ptVoice() {
+      if (typeof speechSynthesis === 'undefined') return null;
+      if (this._voice) return this._voice;
+      let voices = [];
+      try { voices = speechSynthesis.getVoices() || []; } catch (_) { return null; }
+      if (!voices.length) return null;
+      const find = (lang) => voices.find((v) => (v.lang || '').toLowerCase() === lang);
+      this._voice =
+        find('pt-ao') ||
+        find('pt-pt') ||
+        voices.find((v) => (v.lang || '').toLowerCase().startsWith('pt')) ||
+        null;
+      return this._voice;
+    }
+
+    speak(text) {
+      if (this.muted || !text || typeof speechSynthesis === 'undefined') return;
+      try {
+        speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text.replace(/\n/g, ' '));
+        utter.lang = 'pt-PT';
+        utter.rate = 0.98;
+        utter.pitch = 0.96;
+        utter.volume = 0.95;
+        const voice = this._ptVoice();
+        if (voice) utter.voice = voice;
+        speechSynthesis.speak(utter);
+      } catch (_) {}
     }
   }
 
-  suspend() {
-    if (this.ctx && this.ctx.state === 'running') this.ctx.suspend().catch(() => {});
-    if (typeof speechSynthesis !== 'undefined') {
-      try { speechSynthesis.pause(); } catch (_) {}
-    }
+  /* ==================================================================== *
+   *  LÓGICA PRINCIPAL DO JOGO E INTERAÇÃO VR / 360°
+   * ==================================================================== */
+  const container = document.getElementById('canvas-container');
+  const overlay = document.getElementById('vr-overlay');
+  const btnVR = document.getElementById('btn-vr');
+  const btn360 = document.getElementById('btn-360');
+  const topControls = document.getElementById('top-controls');
+  const btnMute = document.getElementById('btn-mute');
+  const exitVR = document.getElementById('exit-vr');
+
+  const audio = new AudioEngine();
+  const world = window.WelwitschiaScene.initScene(container);
+
+  const FACTS = [
+    'A Lua está a 384 mil quilómetros da Terra. Cabiam 30 planetas Terra lado a lado!',
+    'Na Lua, a gravidade é seis vezes mais fraca do que na Terra.',
+    'Um dia lunar tem 14 dias terrestres de luz seguidos de 14 dias de escuridão.',
+    'De dia a Lua chega a +127 graus. De noite desce até -173 graus!',
+    'A Lua não tem ar nem escudo magnético forte. Precisamos de oxigénio e blindagem.',
+    'A Welwitschia é uma planta do deserto do Namibe, em Angola, e vive mais de mil anos!'
+  ];
+
+  const MOD_NAMES = ['Suporte de Vida', 'Blindagem Solar', 'Estufas', 'Laboratório'];
+  const SAVE_KEY = 'welwitschia-lunar-vr-v4';
+
+  const state = {
+    T: 300,
+    t: 0,
+    L: [1, 0, 1, 0],
+    bat: 65,
+    o2: 80,
+    food: 75,
+    sci: 0,
+    integ: 100,
+    ti: 20,
+    started: false,
+    over: false,
+    ev: null,
+    nextEv: 28,
+    fk: 0,
+    dust: false,
+    note: 'Toca ou olha para INICIAR MISSÃO!',
+    noteT: 999,
+    alertT: 0
+  };
+
+  function say(msg, voice = true) {
+    state.note = msg;
+    state.noteT = 6.5;
+    if (voice) audio.speak(msg);
   }
 
-  resume() {
-    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
-    if (typeof speechSynthesis !== 'undefined') {
-      try { speechSynthesis.resume(); } catch (_) {}
-    }
+  function triggerAlert(msg) {
+    state.alertT = 4.0;
+    audio.alarm();
+    say(msg, true);
   }
 
-  tone(freq = 440, dur = 0.12, type = 'sine', vol = 0.07, delay = 0, slideTo = null) {
-    if (!this.ctx || this.muted) return;
-    const t0 = this.ctx.currentTime + delay;
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(freq, t0);
-    if (slideTo) {
-      o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + dur);
-    }
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0 + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g);
-    g.connect(this.master);
-    o.start(t0);
-    o.stop(t0 + dur + 0.06);
+  function refreshScreens() {
+    state.L.forEach((lvl, i) => {
+      world.moduleScreens[i].update(lvl, `NÍVEL DE ENERGIA: ${lvl}/3`);
+    });
   }
 
-  noiseBurst(dur = 0.3, vol = 0.1, cutoff = 900, delay = 0) {
-    if (!this.ctx || !this._noise || this.muted) return;
-    const t0 = this.ctx.currentTime + delay;
-    const src = this.ctx.createBufferSource();
-    src.buffer = this._noise;
-    const f = this.ctx.createBiquadFilter();
-    f.type = 'lowpass';
-    f.frequency.value = cutoff;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0 + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    src.connect(f);
-    f.connect(g);
-    g.connect(this.master);
-    src.start(t0);
-    src.stop(t0 + dur + 0.05);
+  function startMission() {
+    if (state.started) return;
+    audio.init();
+    audio.success();
+    state.started = true;
+    world.startBtn.visible = false;
+    world.startBtn.position.y = -50;
+    refreshScreens();
+    say('Missão iniciada! Sobrevive ao dia e à noite lunar olhando ou tocando nos painéis.');
+    state.noteT = 8;
   }
 
-  click() {
-    this.tone(920, 0.045, 'square', 0.025);
-  }
-
-  error() {
-    this.tone(200, 0.14, 'square', 0.045);
-    this.tone(150, 0.2, 'square', 0.045, 0.12);
-  }
-
-  success() {
-    const notes = [523.25, 659.25, 783.99, 1046.5];
-    notes.forEach((f, i) => this.tone(f, 0.2, 'triangle', 0.055, i * 0.085));
-  }
-
-  alarm() {
-    for (let i = 0; i < 3; i++) {
-      this.tone(880, 0.12, 'sawtooth', 0.035, i * 0.26);
-      this.tone(620, 0.12, 'sawtooth', 0.03, i * 0.26 + 0.13);
-    }
-  }
-
-  servo() {
-    this.tone(260, 0.5, 'sawtooth', 0.028, 0, 120);
-  }
-
-  impact() {
-    this.tone(95, 0.85, 'sine', 0.24, 0, 32);
-    this.noiseBurst(0.7, 0.2, 420);
-    this.noiseBurst(0.25, 0.12, 1600, 0.04);
-  }
-
-  footstep(sprint) {
-    this.noiseBurst(0.08, sprint ? 0.055 : 0.038, 240);
-    this.tone(sprint ? 74 : 64, 0.07, 'sine', 0.025);
-  }
-
-  setStorm(level) {
-    if (!this.ctx || !this.windGain) return;
-    const t = this.ctx.currentTime;
-    this.windGain.gain.setTargetAtTime(0.035 + level * 0.32, t, 1.4);
-    this.windFilter.frequency.setTargetAtTime(360 + level * 820, t, 1.4);
-  }
-
-  setDrill(on) {
-    if (!this.ctx || !this.drillGain || this._drill === on) return;
-    this._drill = on;
-    this.drillGain.gain.setTargetAtTime(on ? 0.075 : 0, this.ctx.currentTime, on ? 0.06 : 0.12);
-    if (on) this.tone(190, 0.35, 'sawtooth', 0.02, 0, 240);
-  }
-
-  getAudioTrack() {
-    if (!this.streamDest) return null;
-    const tracks = this.streamDest.stream.getAudioTracks();
-    return tracks.length ? tracks[0] : null;
-  }
-
-  _ptVoice() {
-    if (typeof speechSynthesis === 'undefined') return null;
-    if (this._voice) return this._voice;
-    let voices = [];
-    try { voices = speechSynthesis.getVoices() || []; } catch (_) { return null; }
-    if (!voices.length) return null;
-    const find = (lang) => voices.find((v) => (v.lang || '').toLowerCase() === lang);
-    this._voice =
-      find('pt-ao') ||
-      find('pt-pt') ||
-      voices.find((v) => (v.lang || '').toLowerCase().startsWith('pt')) ||
-      null;
-    return this._voice;
-  }
-
-  speak(text) {
-    if (this.muted || !text || typeof speechSynthesis === 'undefined') return;
+  function finishMission(win, msg) {
+    state.over = true;
+    const stars = (state.o2 > 50 ? 1 : 0) + (state.food > 50 ? 1 : 0) + (state.integ > 60 ? 1 : 0);
     try {
-      speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = 'pt-PT';
-      utter.rate = 1.0;
-      utter.pitch = 0.94;
-      utter.volume = 0.92;
-      const voice = this._ptVoice();
-      if (voice) utter.voice = voice;
-      speechSynthesis.speak(utter);
-    } catch (_) {
-      /* sem voz disponível */
+      const sv = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
+      sv.best = Math.max(sv.best || 0, Math.round(state.sci));
+      localStorage.setItem(SAVE_KEY, JSON.stringify(sv));
+    } catch (_) {}
+
+    if (win) audio.success();
+    else audio.error();
+
+    state.note = win
+      ? `Missão Cumprida! Ciência: ${Math.round(state.sci)} • Estrelas: ${stars}/3`
+      : `${msg}\nToca ou olha para JOGAR DE NOVO!`;
+    state.noteT = 999;
+    audio.speak(win ? 'Missão cumprida! Parabéns, astronauta de Angola!' : msg);
+
+    world.restartBtn.visible = true;
+    world.restartBtn.position.set(0, 1.5, -3.0);
+  }
+
+  function spawnEvent() {
+    const kind = ['storm', 'dust', 'leak'][Math.floor(Math.random() * 3)];
+    state.nextEv = state.t + 38 + Math.random() * 18;
+
+    if (kind === 'storm') {
+      state.ev = { k: 'storm', t: 10 };
+      audio.setStorm(1.0);
+      triggerAlert('Alerta! Tempestade solar! Aumenta a Blindagem Solar para o nível 3!');
+    } else if (kind === 'dust') {
+      state.ev = { k: 'dust' };
+      state.dust = true;
+      world.solarPanels.forEach(p => p.material.color.setHex(0xb89662));
+      triggerAlert('Poeira lunar nos painéis! Olha ou toca nos painéis solares à esquerda.');
+    } else {
+      const idx = Math.floor(Math.random() * 4);
+      const pos = world.modulePositions[idx];
+      state.ev = { k: 'leak', t: 15 };
+      world.leakBeacon.position.set(pos.x, 3.2, pos.z);
+      world.leakBeacon.visible = true;
+      triggerAlert('Fuga de calor! Olha ou toca na esfera vermelha para selar!');
     }
   }
-}
+
+  function endEvent() {
+    const k = state.ev.k;
+    state.ev = null;
+    audio.setStorm(0);
+    if (k === 'storm') {
+      const diff = 3 - state.L[1];
+      state.integ -= diff * 20;
+      state.o2 -= diff * 8;
+      if (diff > 0) {
+        audio.error();
+        say('A tempestade solar danificou a base!');
+      } else {
+        audio.success();
+        say('A blindagem resistiu perfeitamente!');
+      }
+    } else if (k === 'leak') {
+      state.ti -= 24;
+      world.leakBeacon.visible = false;
+      world.leakBeacon.position.y = -50;
+      audio.error();
+      say('O calor escapou e a estação arrefeceu!');
+    }
+  }
+
+  function handleInteraction(obj) {
+    const data = obj.userData;
+    if (!data) return;
+
+    if (data.type === 'start' && !state.started) {
+      startMission();
+    } else if (data.type === 'restart' && state.over) {
+      location.reload();
+    } else if (data.type === 'module' && state.started && !state.over) {
+      const i = data.index;
+      state.L[i] = (state.L[i] + 1) % 4;
+      audio.click();
+      refreshScreens();
+      say(`${MOD_NAMES[i]} no nível ${state.L[i]}`, false);
+    } else if (data.type === 'solar' && state.started && state.dust) {
+      state.dust = false;
+      state.ev = null;
+      audio.success();
+      world.solarPanels.forEach(p => p.material.color.setHex(0xffffff));
+      say('Painéis solares limpos! Energia restaurada!');
+    } else if (data.type === 'leak' && state.ev && state.ev.k === 'leak') {
+      state.ev = null;
+      audio.success();
+      world.leakBeacon.visible = false;
+      world.leakBeacon.position.y = -50;
+      say('Fuga térmica selada! Excelente trabalho!');
+    }
+  }
+
+  // --- CONTROLO DE ORIENTAÇÃO (GIROSCÓPIO MOBILE + TOQUE/RATO 360°) ---
+  let gyroEnabled = false;
+  let deviceAlpha = 0, deviceBeta = 90, deviceGamma = 0;
+  let yaw = 0, pitch = 0, isDragging = false, downX = 0, downY = 0, lastX = 0, lastY = 0;
+
+  window.addEventListener('deviceorientation', (e) => {
+    if (e.alpha !== null) {
+      gyroEnabled = true;
+      deviceAlpha = e.alpha;
+      deviceBeta = e.beta;
+      deviceGamma = e.gamma;
+    }
+  });
+
+  const raycaster = new THREE.Raycaster();
+  const centerVec = new THREE.Vector2(0, 0);
+  const pointerVec = new THREE.Vector2();
+
+  container.addEventListener('pointerdown', (e) => {
+    isDragging = true;
+    downX = lastX = e.clientX;
+    downY = lastY = e.clientY;
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+    yaw -= (e.clientX - lastX) * 0.004;
+    pitch = Math.max(-1.3, Math.min(1.3, pitch - (e.clientY - lastY) * 0.004));
+    lastX = e.clientX;
+    lastY = e.clientY;
+  });
+
+  window.addEventListener('pointerup', (e) => {
+    const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
+    isDragging = false;
+    // Se foi um toque/clique rápido (sem arrastar a câmara), dispara interação direta
+    if (moved < 12) {
+      const rect = container.getBoundingClientRect();
+      pointerVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointerVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointerVec, world.camera);
+      const hits = raycaster.intersectObjects(world.interactables, false);
+      const hit = hits.find(h => h.object.visible);
+      if (hit) handleInteraction(hit.object);
+    }
+  });
+
+  const euler = new THREE.Euler();
+  const q0 = new THREE.Quaternion();
+  const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+
+  function updateCameraOrientation() {
+    if (gyroEnabled) {
+      const alpha = THREE.MathUtils.degToRad(deviceAlpha);
+      const beta = THREE.MathUtils.degToRad(deviceBeta);
+      const gamma = THREE.MathUtils.degToRad(deviceGamma);
+      const orient = THREE.MathUtils.degToRad(window.orientation || 0);
+
+      euler.set(beta, alpha, -gamma, 'YXZ');
+      q0.setFromEuler(euler);
+      q0.multiply(q1);
+      q0.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -orient));
+      world.camera.quaternion.copy(q0);
+    } else {
+      euler.set(pitch, yaw, 0, 'YXZ');
+      world.camera.quaternion.setFromEuler(euler);
+    }
+  }
+
+  // --- RAYCASTER POR OLHAR (GAZE FUSE DE 0.85s PARA ÓCULOS VR) ---
+  let gazedObj = null;
+  let gazeTimer = 0;
+  const FUSE_TIME = 0.85;
+
+  function updateGaze(dt) {
+    raycaster.setFromCamera(centerVec, world.camera);
+    const hits = raycaster.intersectObjects(world.interactables, false);
+    const hit = hits.find(h => h.object.visible);
+
+    if (hit) {
+      if (gazedObj !== hit.object) {
+        gazedObj = hit.object;
+        gazeTimer = 0;
+      } else {
+        gazeTimer += dt;
+        const progress = Math.min(1, gazeTimer / FUSE_TIME);
+        const sc = 1 + progress * 0.65;
+        world.reticleRing.scale.set(sc, sc, 1);
+        world.reticleRing.material.color.setHex(progress >= 1 ? 0x5ce65c : 0xffcb05);
+
+        if (gazeTimer >= FUSE_TIME) {
+          handleInteraction(gazedObj);
+          gazeTimer = -0.6;
+        }
+      }
+    } else {
+      gazedObj = null;
+      gazeTimer = 0;
+      world.reticleRing.scale.set(1, 1, 1);
+      world.reticleRing.material.color.setHex(0x00f0ff);
+    }
+  }
+
+  // --- BOTÕES DE ENTRADA EM MODO ÓCULOS VR OU 360 ---
+  async function enterExperience(useStereo) {
+    audio.init();
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try { await DeviceOrientationEvent.requestPermission(); } catch (_) {}
+    }
+
+    world.setStereoMode(useStereo);
+    overlay.classList.add('hidden');
+    topControls.style.display = 'flex';
+
+    audio.speak('Bem-vindo ao Welwitschia Lunar! Toca ou olha para o botão verde para iniciar a missão.');
+
+    if (useStereo && document.documentElement.requestFullscreen) {
+      try {
+        await document.documentElement.requestFullscreen();
+        if (screen.orientation && screen.orientation.lock) {
+          await screen.orientation.lock('landscape').catch(() => {});
+        }
+      } catch (_) {}
+    }
+  }
+
+  btnVR.addEventListener('click', () => enterExperience(true));
+  btn360.addEventListener('click', () => enterExperience(false));
+
+  btnMute.addEventListener('click', () => {
+    audio.setMuted(!audio.muted);
+    btnMute.textContent = audio.muted ? '🔇 Mudo' : '🔊 Som';
+  });
+
+  exitVR.addEventListener('click', () => {
+    world.setStereoMode(false);
+    overlay.classList.remove('hidden');
+    topControls.style.display = 'none';
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  });
+
+  // --- LOOP PRINCIPAL A 60 FPS ---
+  const clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.1);
+    const elapsed = clock.getElapsedTime();
+
+    const th = 0.25 + (state.t / state.T) * Math.PI * 2;
+    const sn = Math.sin(th);
+    const te = -173 + 300 * Math.max(0, Math.min(1, (sn + 0.1) / 0.45));
+    const gen = Math.max(0, sn) * 3.2 * (state.dust ? 0.4 : 1);
+
+    if (state.started && !state.over) {
+      const c = state.L;
+      state.t += dt;
+      state.noteT -= dt;
+      state.alertT -= dt;
+
+      const drain = 0.28 * (c[0] + c[1] + c[2]) + 0.34 * c[3];
+      state.bat = Math.max(0, Math.min(100, state.bat + (gen - drain) * dt));
+      const pw = state.bat > 0;
+      const cold = state.ti < -10;
+
+      state.o2 = Math.max(0, Math.min(100, state.o2 + (-0.48 + (pw ? c[0] * 0.45 : 0) - (cold ? 0.55 : 0)) * dt));
+      state.food = Math.max(0, Math.min(100, state.food + (-0.24 + (pw ? c[2] * 0.22 : 0)) * dt));
+
+      if (pw && !cold) {
+        state.sci = Math.max(0, Math.min(100, state.sci + c[3] * 0.85 * dt));
+        while (state.fk < FACTS.length && state.sci >= 10 * (state.fk + 1)) {
+          audio.success();
+          say('Descoberta! ' + FACTS[state.fk], true);
+          state.noteT = 9;
+          state.fk++;
+        }
+      }
+
+      state.integ = Math.max(0, Math.min(100, state.integ + (pw && c[1] > 0 ? 0.22 : 0) * dt));
+      state.ti += ((pw ? 20 : te * 0.4) - state.ti) * 0.03 * dt;
+
+      if (state.ev) {
+        if (state.ev.k !== 'dust') {
+          state.ev.t -= dt;
+          if (state.ev.t <= 0) endEvent();
+        }
+      } else if (state.t >= state.nextEv) {
+        spawnEvent();
+      }
+
+      if (state.o2 <= 0) finishMission(false, 'Acabou o oxigénio na estação!');
+      else if (state.food <= 0) finishMission(false, 'Acabaram os alimentos da estufa!');
+      else if (state.integ <= 0) finishMission(false, 'A blindagem da base falhou!');
+      else if (state.ti < -40) finishMission(false, 'A base congelou na noite lunar!');
+      else if (state.t >= state.T) finishMission(state.sci >= 60, 'Faltou ciência! Usa mais o Laboratório.');
+    }
+
+    updateCameraOrientation();
+    updateGaze(dt);
+    world.updateAnimations(elapsed, th);
+
+    world.updateHUD({
+      started: state.started,
+      over: state.over,
+      isDay: sn > 0,
+      cyclePct: Math.round((state.t / state.T) * 100),
+      bat: Math.round(state.bat),
+      o2: Math.round(state.o2),
+      food: Math.round(state.food),
+      ti: Math.round(state.ti),
+      te: Math.round(te),
+      integ: Math.round(state.integ),
+      sci: Math.round(state.sci),
+      note: state.noteT > 0 || state.over ? state.note : '',
+      alertFlash: state.alertT > 0 || (state.ev && state.ev.k === 'storm')
+    });
+
+    world.renderFrame();
+  }
+
+  animate();
+})();
