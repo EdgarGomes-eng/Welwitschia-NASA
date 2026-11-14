@@ -1,26 +1,18 @@
 /**
  * ============================================================================
  *  WELWITSCHIA LUNAR — game.js
- *  Lógica da missão NASA, objectivos, eventos dinâmicos, áudio sintetizado
- *  PT-AO (voz + ambiente) e controlo duplo VR (Gaze + Toque/Clique).
+ *  Lógica da missão NASA, áudio sintetizado PT-AO e controlo VR Horizontal.
  * ============================================================================
  */
 (() => {
-  /* ==================================================================== *
-   *  ÁUDIO — tudo sintetizado / falado localmente (sem ficheiros)
-   * ==================================================================== */
   class AudioEngine {
     constructor() {
       this.ctx = null;
       this.master = null;
-      this.streamDest = null;
       this.windGain = null;
       this.windFilter = null;
-      this.drillGain = null;
       this.muted = false;
-      this._drill = false;
       this._noise = null;
-      this._started = false;
       this._voice = null;
     }
 
@@ -31,33 +23,21 @@
       }
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
-      try {
-        this.ctx = new AC();
-      } catch (_) {
-        return;
-      }
+      try { this.ctx = new AC(); } catch (_) { return; }
+
       const ctx = this.ctx;
       this.master = ctx.createGain();
       this.master.gain.value = this.muted ? 0 : 0.72;
       this.master.connect(ctx.destination);
 
-      try {
-        this.streamDest = ctx.createMediaStreamDestination();
-        this.master.connect(this.streamDest);
-      } catch (_) {
-        this.streamDest = null;
-      }
-
       this._noise = this._makeNoise(3.2);
 
-      // vento lunar / poeira
       const windSrc = ctx.createBufferSource();
       windSrc.buffer = this._noise;
       windSrc.loop = true;
       this.windFilter = ctx.createBiquadFilter();
       this.windFilter.type = 'lowpass';
       this.windFilter.frequency.value = 380;
-      this.windFilter.Q.value = 0.4;
       this.windGain = ctx.createGain();
       this.windGain.gain.value = 0.035;
       windSrc.connect(this.windFilter);
@@ -65,7 +45,6 @@
       this.windGain.connect(this.master);
       windSrc.start();
 
-      // zumbido do fato / suporte de vida
       const hum = ctx.createOscillator();
       hum.type = 'sine';
       hum.frequency.value = 47;
@@ -75,16 +54,6 @@
       humGain.connect(this.master);
       hum.start();
 
-      const hum2 = ctx.createOscillator();
-      hum2.type = 'triangle';
-      hum2.frequency.value = 94;
-      const hum2Gain = ctx.createGain();
-      hum2Gain.gain.value = 0.008;
-      hum2.connect(hum2Gain);
-      hum2Gain.connect(this.master);
-      hum2.start();
-
-      this._started = true;
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     }
 
@@ -112,16 +81,13 @@
       }
     }
 
-    tone(freq = 440, dur = 0.12, type = 'sine', vol = 0.07, delay = 0, slideTo = null) {
+    tone(freq = 440, dur = 0.12, type = 'sine', vol = 0.07, delay = 0) {
       if (!this.ctx || this.muted) return;
       const t0 = this.ctx.currentTime + delay;
       const o = this.ctx.createOscillator();
       const g = this.ctx.createGain();
       o.type = type;
       o.frequency.setValueAtTime(freq, t0);
-      if (slideTo) {
-        o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + dur);
-      }
       g.gain.setValueAtTime(0.0001, t0);
       g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0 + 0.012);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
@@ -131,20 +97,9 @@
       o.stop(t0 + dur + 0.06);
     }
 
-    click() {
-      this.tone(920, 0.045, 'square', 0.03);
-    }
-
-    error() {
-      this.tone(200, 0.14, 'square', 0.045);
-      this.tone(150, 0.2, 'square', 0.045, 0.12);
-    }
-
-    success() {
-      const notes = [523.25, 659.25, 783.99, 1046.5];
-      notes.forEach((f, i) => this.tone(f, 0.2, 'triangle', 0.06, i * 0.085));
-    }
-
+    click() { this.tone(920, 0.045, 'square', 0.03); }
+    error() { this.tone(200, 0.14, 'square', 0.045); this.tone(150, 0.2, 'square', 0.045, 0.12); }
+    success() { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this.tone(f, 0.2, 'triangle', 0.06, i * 0.085)); }
     alarm() {
       for (let i = 0; i < 3; i++) {
         this.tone(880, 0.12, 'sawtooth', 0.04, i * 0.26);
@@ -166,11 +121,7 @@
       try { voices = speechSynthesis.getVoices() || []; } catch (_) { return null; }
       if (!voices.length) return null;
       const find = (lang) => voices.find((v) => (v.lang || '').toLowerCase() === lang);
-      this._voice =
-        find('pt-ao') ||
-        find('pt-pt') ||
-        voices.find((v) => (v.lang || '').toLowerCase().startsWith('pt')) ||
-        null;
+      this._voice = find('pt-ao') || find('pt-pt') || voices.find((v) => (v.lang || '').toLowerCase().startsWith('pt')) || null;
       return this._voice;
     }
 
@@ -190,9 +141,6 @@
     }
   }
 
-  /* ==================================================================== *
-   *  LÓGICA PRINCIPAL DO JOGO E INTERAÇÃO VR / 360°
-   * ==================================================================== */
   const container = document.getElementById('canvas-container');
   const overlay = document.getElementById('vr-overlay');
   const btnVR = document.getElementById('btn-vr');
@@ -205,16 +153,16 @@
   const world = window.WelwitschiaScene.initScene(container);
 
   const FACTS = [
-    'A Lua está a 384 mil quilómetros da Terra. Cabiam 30 planetas Terra lado a lado!',
+    'A Lua está a 384 mil km da Terra. Cabiam 30 planetas Terra lado a lado!',
     'Na Lua, a gravidade é seis vezes mais fraca do que na Terra.',
-    'Um dia lunar tem 14 dias terrestres de luz seguidos de 14 dias de escuridão.',
-    'De dia a Lua chega a +127 graus. De noite desce até -173 graus!',
-    'A Lua não tem ar nem escudo magnético forte. Precisamos de oxigénio e blindagem.',
+    'Um dia lunar tem 14 dias de luz seguidos de 14 dias de escuridão.',
+    'De dia a Lua chega a +127°C e de noite desce até -173°C!',
+    'A Lua não tem ar nem escudo magnético. Precisamos de oxigénio e blindagem.',
     'A Welwitschia é uma planta do deserto do Namibe, em Angola, e vive mais de mil anos!'
   ];
 
   const MOD_NAMES = ['Suporte de Vida', 'Blindagem Solar', 'Estufas', 'Laboratório'];
-  const SAVE_KEY = 'welwitschia-lunar-vr-v4';
+  const SAVE_KEY = 'welwitschia-lunar-vr-v5';
 
   const state = {
     T: 300,
@@ -365,7 +313,7 @@
     }
   }
 
-  // --- CONTROLO DE ORIENTAÇÃO (GIROSCÓPIO MOBILE + TOQUE/RATO 360°) ---
+  // --- CONTROLO DE ORIENTAÇÃO (GIROSCÓPIO HORIZONTAL VR + TOQUE/RATO) ---
   let gyroEnabled = false;
   let deviceAlpha = 0, deviceBeta = 90, deviceGamma = 0;
   let yaw = 0, pitch = 0, isDragging = false, downX = 0, downY = 0, lastX = 0, lastY = 0;
@@ -391,8 +339,13 @@
 
   window.addEventListener('pointermove', (e) => {
     if (!isDragging) return;
-    yaw -= (e.clientX - lastX) * 0.004;
-    pitch = Math.max(-1.3, Math.min(1.3, pitch - (e.clientY - lastY) * 0.004));
+    if (world.isForcedLandscape()) {
+      yaw -= (e.clientY - lastY) * 0.004;
+      pitch = Math.max(-1.3, Math.min(1.3, pitch + (e.clientX - lastX) * 0.004));
+    } else {
+      yaw -= (e.clientX - lastX) * 0.004;
+      pitch = Math.max(-1.3, Math.min(1.3, pitch - (e.clientY - lastY) * 0.004));
+    }
     lastX = e.clientX;
     lastY = e.clientY;
   });
@@ -400,11 +353,16 @@
   window.addEventListener('pointerup', (e) => {
     const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
     isDragging = false;
-    // Se foi um toque/clique rápido (sem arrastar a câmara), dispara interação direta
     if (moved < 12) {
-      const rect = container.getBoundingClientRect();
-      pointerVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      pointerVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      const w = window.innerWidth, h = window.innerHeight;
+      if (world.isForcedLandscape()) {
+        // Mapeia o toque quando o canvas está rodado 90deg para modo VR horizontal
+        pointerVec.x = (e.clientY / h) * 2 - 1;
+        pointerVec.y = (e.clientX / w) * 2 - 1;
+      } else {
+        pointerVec.x = (e.clientX / w) * 2 - 1;
+        pointerVec.y = -(e.clientY / h) * 2 + 1;
+      }
       raycaster.setFromCamera(pointerVec, world.camera);
       const hits = raycaster.intersectObjects(world.interactables, false);
       const hit = hits.find(h => h.object.visible);
@@ -421,7 +379,9 @@
       const alpha = THREE.MathUtils.degToRad(deviceAlpha);
       const beta = THREE.MathUtils.degToRad(deviceBeta);
       const gamma = THREE.MathUtils.degToRad(deviceGamma);
-      const orient = THREE.MathUtils.degToRad(window.orientation || 0);
+      // Se forçámos paisagem via CSS, compensa 90 graus para o horizonte ficar nivelado nos óculos VR
+      const screenAngle = world.isForcedLandscape() ? 90 : (window.orientation || 0);
+      const orient = THREE.MathUtils.degToRad(screenAngle);
 
       euler.set(beta, alpha, -gamma, 'YXZ');
       q0.setFromEuler(euler);
@@ -434,7 +394,7 @@
     }
   }
 
-  // --- RAYCASTER POR OLHAR (GAZE FUSE DE 0.85s PARA ÓCULOS VR) ---
+  // --- RAYCASTER POR OLHAR (GAZE FUSE DE 0.85s) ---
   let gazedObj = null;
   let gazeTimer = 0;
   const FUSE_TIME = 0.85;
@@ -468,18 +428,11 @@
     }
   }
 
-  // --- BOTÕES DE ENTRADA EM MODO ÓCULOS VR OU 360 ---
   async function enterExperience(useStereo) {
     audio.init();
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       try { await DeviceOrientationEvent.requestPermission(); } catch (_) {}
     }
-
-    world.setStereoMode(useStereo);
-    overlay.classList.add('hidden');
-    topControls.style.display = 'flex';
-
-    audio.speak('Bem-vindo ao Welwitschia Lunar! Toca ou olha para o botão verde para iniciar a missão.');
 
     if (useStereo && document.documentElement.requestFullscreen) {
       try {
@@ -489,6 +442,12 @@
         }
       } catch (_) {}
     }
+
+    world.setStereoMode(useStereo);
+    overlay.classList.add('hidden');
+    topControls.style.display = 'flex';
+
+    audio.speak('Bem-vindo ao Welwitschia Lunar! Coloca o telemóvel na horizontal nos óculos e olha para iniciar a missão.');
   }
 
   btnVR.addEventListener('click', () => enterExperience(true));
@@ -506,7 +465,6 @@
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   });
 
-  // --- LOOP PRINCIPAL A 60 FPS ---
   const clock = new THREE.Clock();
 
   function animate() {

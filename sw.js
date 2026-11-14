@@ -1,4 +1,4 @@
-const CACHE_NAME = 'welwitschia-lunar-vr-v4';
+const CACHE_NAME = 'welwitschia-lunar-vr-v5';
 const ASSETS = [
   './',
   './index.html',

@@ -1,4 +1,4 @@
-// scene.js — Construção do Cenário Lunar Realista, Animações 3D e Câmara VR Estereoscópica
+// scene.js — Construção do Cenário Lunar Realista, Divisão VR Horizontal e HUD Responsivo
 window.WelwitschiaScene = (() => {
   const S = window.WelwitschiaShaders;
 
@@ -72,7 +72,7 @@ window.WelwitschiaScene = (() => {
     earthGroup.add(earthMesh, atmoMesh);
     scene.add(earthGroup);
 
-    // --- TERRENO LUNAR COM CRATERAS E MONTANHAS NO HORIZONTE ---
+    // --- TERRENO LUNAR COM CRATERAS E MONTANHAS ---
     const { map: regMap, bumpMap: regBump } = S.createLunarRegolithTextures();
     const groundGeo = new THREE.PlaneGeometry(240, 240, 140, 140);
     groundGeo.rotateX(-Math.PI / 2);
@@ -143,7 +143,7 @@ window.WelwitschiaScene = (() => {
     const darkFrameMat = new THREE.MeshStandardMaterial({ color: 0x222938, metalness: 0.75, roughness: 0.3 });
     const solarMat = new THREE.MeshStandardMaterial({ map: S.createSolarPanelTexture(), metalness: 0.65, roughness: 0.18, emissive: 0x061942, emissiveIntensity: 0.35 });
 
-    // Plataforma Central de Aterragem com Emblema Welwitschia Lunar
+    // Plataforma Central de Aterragem
     const padGroup = new THREE.Group();
     const padBase = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.5, 0.12, 32), darkFrameMat);
     padBase.receiveShadow = true;
@@ -382,11 +382,10 @@ window.WelwitschiaScene = (() => {
       g.textAlign = 'center';
       g.fillText(label, 256, 95);
 
-      const mesh = new THREE.Mesh(
+      return new THREE.Mesh(
         new THREE.BoxGeometry(w, h, 0.12),
         new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c) })
       );
-      return mesh;
     }
 
     const startBtn = make3DButton('INICIAR MISSÃO', '#18a84c', 2.2, 0.65);
@@ -412,17 +411,17 @@ window.WelwitschiaScene = (() => {
     scene.add(leakBeacon);
     interactables.push(leakBeacon);
 
-    // --- HUD ESPACIAL ACOPLADO À CÂMARA VR ---
+    // --- HUD ESPACIAL ACOPLADO À CÂMARA VR COM QUEBRA DE LINHA SEGURA ---
     const hudCanvas = document.createElement('canvas');
     hudCanvas.width = 1024; hudCanvas.height = 512;
     const hudCtx = hudCanvas.getContext('2d');
     const hudTex = new THREE.CanvasTexture(hudCanvas);
     const hudPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.75, 0.88),
+      new THREE.PlaneGeometry(1.55, 0.78), // Dimensão segura dentro do campo de visão das lentes VR
       new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthTest: false })
     );
-    hudPlane.position.set(0, -0.05, -1.65);
-    hudPlane.raycast = () => {}; // Não bloqueia cliques nos botões 3D
+    hudPlane.position.set(0, 0, -1.65);
+    hudPlane.raycast = () => {};
     camera.add(hudPlane);
 
     const reticleRing = new THREE.Mesh(
@@ -433,69 +432,123 @@ window.WelwitschiaScene = (() => {
     reticleRing.raycast = () => {};
     camera.add(reticleRing);
 
+    // Função de quebra automática de linhas para nenhuma notificação sair da caixa
+    function drawWrappedText(ctx, text, centerX, startY, maxWidth, lineHeight) {
+      const paragraphs = String(text).split('\n');
+      const allLines = [];
+
+      paragraphs.forEach(p => {
+        const words = p.split(' ');
+        let currentLine = '';
+        words.forEach(word => {
+          const testLine = currentLine ? `${currentLine} ${word}` : word;
+          if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+            allLines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        });
+        if (currentLine) allLines.push(currentLine);
+      });
+
+      allLines.forEach((line, i) => {
+        ctx.fillText(line, centerX, startY + i * lineHeight);
+      });
+      return allLines.length;
+    }
+
     function updateHUD(state) {
       const g = hudCtx;
       g.clearRect(0, 0, 1024, 512);
 
+      // Barra superior compacta com margem lateral segura (x: 152 até 872)
       if (state.started && !state.over) {
-        g.fillStyle = 'rgba(5, 14, 36, 0.76)';
-        g.fillRect(110, 12, 804, 78);
-        g.strokeStyle = state.alertFlash ? '#ff3b3b' : 'rgba(0, 229, 255, 0.55)';
+        const boxX = 152, boxW = 720;
+        g.fillStyle = 'rgba(5, 14, 36, 0.80)';
+        g.fillRect(boxX, 14, boxW, 82);
+        g.strokeStyle = state.alertFlash ? '#ff3b3b' : 'rgba(0, 229, 255, 0.65)';
         g.lineWidth = 3;
-        g.strokeRect(110, 12, 804, 78);
+        g.strokeRect(boxX, 14, boxW, 82);
 
         g.fillStyle = '#ffffff';
-        g.font = 'bold 21px sans-serif';
+        g.font = 'bold 20px sans-serif';
         g.textAlign = 'center';
-        const cycleLabel = state.isDay ? '☀️ DIA LUNAR' : '🌑 NOITE LUNAR';
+        const cycleLabel = state.isDay ? '☀️ DIA' : '🌑 NOITE';
         g.fillText(
-          `${cycleLabel} (${state.cyclePct}%)  |  ⚡ BAT: ${state.bat}%  |  💨 O₂: ${state.o2}%  |  🌱 COMIDA: ${state.food}%`,
-          512, 42
+          `${cycleLabel} ${state.cyclePct}%  •  ⚡ BAT ${state.bat}%  •  💨 O₂ ${state.o2}%  •  🌱 COMIDA ${state.food}%`,
+          512, 46
         );
         g.fillStyle = '#ffd27a';
         g.fillText(
-          `🌡️ BASE: ${state.ti}°C (FORA: ${state.te}°C)  |  🛡️ ESCUDO: ${state.integ}%  |  🔬 CIÊNCIA: ${state.sci}/60`,
-          512, 74
+          `🌡️ BASE ${state.ti}°C (FORA ${state.te}°C)  •  🛡️ ESCUDO ${state.integ}%  •  🔬 CIÊNCIA ${state.sci}/60`,
+          512, 78
         );
       }
 
+      // Caixa de notificação inferior com quebra de linha automática e margem larga
       if (state.note) {
-        g.fillStyle = state.alertFlash ? 'rgba(140, 15, 25, 0.88)' : 'rgba(5, 14, 36, 0.84)';
-        g.fillRect(130, 412, 764, 84);
+        const boxX = 152, boxW = 720, boxY = 384, boxH = 112;
+        g.fillStyle = state.alertFlash ? 'rgba(145, 15, 25, 0.92)' : 'rgba(5, 14, 36, 0.88)';
+        g.fillRect(boxX, boxY, boxW, boxH);
         g.strokeStyle = state.alertFlash ? '#ff6b6b' : '#ffd27a';
         g.lineWidth = 3;
-        g.strokeRect(130, 412, 764, 84);
+        g.strokeRect(boxX, boxY, boxW, boxH);
 
         g.fillStyle = '#fff8dc';
-        g.font = 'bold 22px sans-serif';
+        g.font = 'bold 21px sans-serif';
         g.textAlign = 'center';
-        const lines = state.note.split('\n');
-        lines.forEach((ln, idx) => {
-          g.fillText(ln, 512, 446 + idx * 30);
-        });
+        drawWrappedText(g, state.note, 512, boxY + 34, boxW - 48, 28);
       }
       hudTex.needsUpdate = true;
     }
 
+    // --- RENDERIZADOR ESTEREOSCÓPICO HORIZONTAL LADO A LADO ---
     let stereoMode = false;
     const stereoCam = new THREE.StereoCamera();
     stereoCam.eyeSep = 0.064;
 
+    function syncRendererSize() {
+      let w = window.innerWidth;
+      let h = window.innerHeight;
+
+      // Se o modo VR estiver ativo e o telemóvel ainda estiver em pé (portrait),
+      // ativamos a rotação CSS horizontal e trocamos largura/altura para a divisão ficar lado a lado!
+      if (stereoMode && h > w) {
+        container.classList.add('force-landscape');
+        [w, h] = [h, w];
+      } else {
+        container.classList.remove('force-landscape');
+      }
+
+      camera.aspect = stereoMode ? (w / 2) / h : w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h, false);
+      renderer.domElement.style.width = '100%';
+      renderer.domElement.style.height = '100%';
+    }
+
     function renderFrame() {
-      const w = window.innerWidth, h = window.innerHeight;
+      const size = renderer.getSize(new THREE.Vector2());
+      const w = size.x, h = size.y;
+
       if (!stereoMode) {
         renderer.setScissorTest(false);
         renderer.setViewport(0, 0, w, h);
         renderer.render(scene, camera);
       } else {
+        camera.aspect = (w / 2) / h;
+        camera.updateProjectionMatrix();
         camera.updateMatrixWorld();
         stereoCam.update(camera);
         renderer.setScissorTest(true);
 
+        // Olho Esquerdo (metade esquerda do ecrã horizontal)
         renderer.setScissor(0, 0, w / 2, h);
         renderer.setViewport(0, 0, w / 2, h);
         renderer.render(scene, stereoCam.cameraL);
 
+        // Olho Direito (metade direita do ecrã horizontal)
         renderer.setScissor(w / 2, 0, w / 2, h);
         renderer.setViewport(w / 2, 0, w / 2, h);
         renderer.render(scene, stereoCam.cameraR);
@@ -533,11 +586,8 @@ window.WelwitschiaScene = (() => {
       }
     }
 
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+    window.addEventListener('resize', syncRendererSize);
+    window.addEventListener('orientationchange', () => setTimeout(syncRendererSize, 120));
 
     return {
       scene,
@@ -553,7 +603,11 @@ window.WelwitschiaScene = (() => {
       updateHUD,
       updateAnimations,
       renderFrame,
-      setStereoMode: (v) => { stereoMode = v; }
+      isForcedLandscape: () => container.classList.contains('force-landscape'),
+      setStereoMode: (v) => {
+        stereoMode = v;
+        syncRendererSize();
+      }
     };
   }
 
