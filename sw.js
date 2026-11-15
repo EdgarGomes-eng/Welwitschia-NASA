@@ -1,12 +1,16 @@
-const CACHE_NAME = 'welwitschia-lunar-vr-v12';
+// sw.js — Service Worker 100% Offline-First para Welwitschia Lunar
+// Estratégia: Network-First com Cache Fallback (Garante atualizações na rede e operação offline completa)
+const CACHE_NAME = 'welwitschia-lunar-vr-v15';
 const ASSETS = [
   './',
   './index.html',
-  './shaders.js?v=12',
-  './scene.js?v=12',
-  './game.js?v=12',
-  './manifest.json',
-  'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js'
+  './three.min.js',
+  './shaders.js?v=15',
+  './lunar-exterior.js?v=15',
+  './vr-base.js?v=15',
+  './mission.js?v=15',
+  './main.js?v=15',
+  './manifest.json'
 ];
 
 self.addEventListener('install', (e) => {
@@ -25,14 +29,23 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// Estratégia Network-First com Cache Fallback
 self.addEventListener('fetch', (e) => {
+  if (e.request.method !== 'GET') return;
+
   e.respondWith(
-    caches.match(e.request).then((cached) => {
-      return cached || fetch(e.request).then((res) => {
-        const clone = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
-        return res;
-      }).catch(() => caches.match('./index.html'));
-    })
+    fetch(e.request)
+      .then((networkRes) => {
+        if (networkRes && networkRes.status === 200) {
+          const resClone = networkRes.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, resClone));
+        }
+        return networkRes;
+      })
+      .catch(() => {
+        return caches.match(e.request).then((cached) => {
+          return cached || caches.match('./index.html');
+        });
+      })
   );
 });

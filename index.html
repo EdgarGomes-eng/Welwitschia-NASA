@@ -8,7 +8,15 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="./manifest.json">
-  <title>Welwitschia Lunar — Web Mobile VR & 360°</title>
+  <title>Welwitschia Lunar — Web Mobile VR & 360° (NASA Artemis Angola)</title>
+  <script>
+    // Limpeza de caches antigas para atualização imediata
+    if ('caches' in window) {
+      caches.keys().then(keys => keys.forEach(k => {
+        if (k !== 'welwitschia-lunar-vr-v15') caches.delete(k);
+      }));
+    }
+  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -17,7 +25,6 @@
       position: fixed; inset: 0;
     }
     
-    /* Palco único que contém o 3D, o visor, o HUD e os alertas */
     #vr-stage {
       position: fixed;
       top: 0; left: 0;
@@ -27,7 +34,7 @@
       transform-origin: center center;
     }
 
-    /* Roda TODO o palco (3D + letras + alertas + botões) 90° para horizontal quando o iPhone/Android está em pé */
+    /* Rotação unificada a todo o palco para telemóveis em modo retrato */
     #vr-stage.force-landscape {
       width: 100vh;
       height: 100vw;
@@ -44,7 +51,6 @@
       touch-action: none;
     }
 
-    /* Moldura periférica do capacete espacial */
     #helmet-visor {
       position: absolute;
       inset: 0;
@@ -60,79 +66,91 @@
       box-shadow: inset 0 0 55px rgba(0, 229, 255, 0.2);
     }
 
-    /* Barra superior com telemetria + botões */
+    /* Barra superior blindada e responsiva para qualquer ecrã */
     #hud-top-bar {
       position: absolute;
-      top: max(10px, env(safe-area-inset-top));
-      left: 12px;
-      right: 12px;
+      top: 10px;
+      left: 10px;
+      right: 10px;
       z-index: 15;
       display: none;
+      flex-wrap: wrap;
       align-items: flex-start;
       justify-content: space-between;
-      gap: 8px;
+      gap: 6px;
       pointer-events: none;
     }
 
     #telemetry-box {
-      background: rgba(5, 14, 36, 0.84);
-      border: 1.5px solid rgba(0, 229, 255, 0.6);
-      border-radius: 12px;
-      padding: 8px 14px;
+      background: rgba(5, 14, 36, 0.88);
+      border: 1.5px solid rgba(0, 229, 255, 0.65);
+      border-radius: 10px;
+      padding: 6px 10px;
       color: #fff;
-      font-size: clamp(11px, 1.8vw, 14px);
-      line-height: 1.4;
-      backdrop-filter: blur(6px);
-      max-width: calc(100% - 210px);
+      font-size: 11px;
+      line-height: 1.35;
+      max-width: 100%;
+      overflow-wrap: break-word;
+      word-break: break-word;
     }
     #telemetry-box.alert-border {
       border-color: #ff4757;
-      box-shadow: 0 0 18px rgba(255, 71, 87, 0.45);
+      box-shadow: 0 0 16px rgba(255, 71, 87, 0.5);
     }
     .tele-row-1 { font-weight: 700; color: #ffffff; }
     .tele-row-2 { font-weight: 600; color: #ffd27a; margin-top: 2px; }
 
     #top-controls {
       display: flex;
-      gap: 6px;
+      flex-wrap: wrap;
+      gap: 5px;
       pointer-events: auto;
-      flex-shrink: 0;
+      margin-left: auto;
     }
     .mini-btn {
-      background: rgba(10, 15, 30, 0.85); color: #fff; border: 1px solid rgba(255,255,255,0.3);
-      padding: 8px 11px; border-radius: 10px; font-size: 12px; font-weight: 700;
-      cursor: pointer;
+      background: rgba(10, 15, 30, 0.88); color: #fff; border: 1px solid rgba(255,255,255,0.32);
+      padding: 7px 10px; border-radius: 9px; font-size: 11px; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .mini-btn:active { transform: scale(0.96); }
+
+    #btn-mode-toggle {
+      border-color: #00e5ff;
+      color: #00e5ff;
+      background: rgba(5, 24, 48, 0.92);
     }
 
-    /* Caixa de Notificações e Alertas Inferior — 100% responsiva e dentro das margens */
+    /* Caixa de Notificações Inferior com margem garantida de 12px de cada lado */
     #hud-note-box {
       position: absolute;
-      bottom: max(14px, env(safe-area-inset-bottom));
-      left: 50%;
-      transform: translateX(-50%);
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      margin: 0 auto;
+      max-width: 640px;
       z-index: 15;
       display: none;
-      width: min(92%, 680px);
-      background: rgba(5, 14, 36, 0.90);
+      background: rgba(5, 14, 36, 0.92);
       border: 2px solid #ffd27a;
-      border-radius: 14px;
-      padding: 10px 18px;
+      border-radius: 12px;
+      padding: 9px 14px;
       color: #fff8dc;
-      font-size: clamp(13px, 2.1vw, 16px);
+      font-size: 13px;
       font-weight: 700;
       text-align: center;
-      line-height: 1.38;
-      word-wrap: break-word;
+      line-height: 1.35;
+      overflow-wrap: break-word;
+      word-break: break-word;
       pointer-events: none;
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7);
     }
     #hud-note-box.alert-mode {
-      background: rgba(155, 16, 28, 0.94);
+      background: rgba(155, 16, 28, 0.95);
       border-color: #ff8a8a;
       color: #ffffff;
     }
 
-    /* Menu Inicial */
     #vr-overlay {
       position: fixed; inset: 0; z-index: 25;
       background: radial-gradient(circle at center, rgba(14, 28, 68, 0.92) 0%, rgba(2, 4, 12, 0.99) 100%);
@@ -145,8 +163,8 @@
       padding: 6px 14px; border-radius: 99px; font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 12px;
     }
     h1 { font-size: clamp(24px, 6vw, 40px); font-weight: 800; letter-spacing: 1px; color: #fff; text-shadow: 0 0 24px rgba(79, 227, 255, 0.5); }
-    .subtitle { color: #b8d4ff; font-size: 14px; max-width: 460px; margin: 10px 0 22px; line-height: 1.45; }
-    .btn-group { display: flex; flex-direction: column; width: 100%; max-width: 340px; gap: 12px; }
+    .subtitle { color: #b8d4ff; font-size: 14px; max-width: 480px; margin: 10px 0 22px; line-height: 1.45; }
+    .btn-group { display: flex; flex-direction: column; width: 100%; max-width: 360px; gap: 12px; }
     .main-btn {
       border: none; border-radius: 14px; padding: 16px 20px; font-size: 15px; font-weight: 700;
       cursor: pointer; touch-action: manipulation;
@@ -160,7 +178,14 @@
       background: rgba(255, 255, 255, 0.15); color: #e2eeff; border: 1px solid rgba(255, 255, 255, 0.3);
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+  <!-- Biblioteca Three.js 100% Offline (Local com Fallback para CDN) -->
+  <script src="./three.min.js"></script>
+  <script>
+    if (typeof THREE === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"><\\/script>');
+    }
+  </script>
 </head>
 <body>
   <div id="vr-stage">
@@ -173,6 +198,7 @@
         <div class="tele-row-2" id="tele-r2">🌡️ BASE 20°C (FORA 127°C) • 🛡️ ESCUDO 100% • 🔬 CIÊNCIA 0/60</div>
       </div>
       <div id="top-controls">
+        <button id="btn-mode-toggle" class="mini-btn" type="button" title="Alternar entre Modo VR e Modo Normal 360°">🥽 Modo: VR [Ativo]</button>
         <button id="btn-fullscreen" class="mini-btn" type="button">⛶ Tela Cheia</button>
         <button id="btn-mute" class="mini-btn" type="button">🔊 Som</button>
         <button id="btn-exit" class="mini-btn" type="button">Menu</button>
@@ -185,19 +211,22 @@
   <div id="vr-overlay">
     <div class="badge">NASA Space Apps Challenge 2026 • Angola</div>
     <h1>WELWITSCHIA LUNAR</h1>
-    <p class="subtitle">Simulador Espacial Web Mobile. Entra em tela cheia na horizontal para explorar a base lunar:</p>
+    <p class="subtitle">Simulador Espacial Web Mobile do Polo Sul Lunar. O Modo VR Imersivo é o padrão ativo em todos os ambientes:</p>
     <div class="btn-group">
-      <button id="btn-vr" class="main-btn" type="button">🥽 Capacete Espacial VR (Horizontal)</button>
-      <button id="btn-360" class="main-btn" type="button">📱 Modo Ecrã 360° (Tela Cheia)</button>
+      <button id="btn-vr" class="main-btn" type="button">🥽 Entrar no Modo VR (Padrão Imersivo)</button>
+      <button id="btn-360" class="main-btn" type="button">📱 Entrar no Modo Normal 360°</button>
     </div>
   </div>
 
-  <script src="./shaders.js?v=12"></script>
-  <script src="./scene.js?v=12"></script>
-  <script src="./game.js?v=12"></script>
+  <!-- Módulos de Código Organizados e Sem Conflitos -->
+  <script src="./shaders.js?v=15"></script>
+  <script src="./lunar-exterior.js?v=15"></script>
+  <script src="./vr-base.js?v=15"></script>
+  <script src="./mission.js?v=15"></script>
+  <script src="./main.js?v=15"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js?v=12').catch(() => {});
+      navigator.serviceWorker.register('./sw.js?v=15').then(reg => reg.update()).catch(() => {});
     }
   </script>
 </body>
