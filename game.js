@@ -450,11 +450,11 @@
     const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
     if (req) {
       try {
-        const promise = req.call(el);
+        const promise = req.call(el, { navigationUI: 'hide' });
         if (promise && promise.then) {
           promise.then(() => {
             if (lockLandscape && screen.orientation && screen.orientation.lock) {
-              screen.orientation.lock('landscape').catch(() => {});
+              screen.orientation.lock('landscape-primary').catch(() => {});
             }
             world.syncStageOrientation();
           }).catch(() => {});
@@ -462,6 +462,14 @@
       } catch (_) {}
     }
   }
+
+  // Escuta mudanças de fullscreen para sincronizar
+  document.addEventListener('fullscreenchange', () => {
+    world.syncStageOrientation();
+    // Atualiza botão de fullscreen
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    btnFullscreen.textContent = fsEl ? '⛶ Sair Tela Cheia' : '⛶ Tela Cheia';
+  });
 
   function openMode(isVR) {
     // 1. Pede Tela Cheia imediatamente no clique (regra obrigatória do Chrome/Android)
