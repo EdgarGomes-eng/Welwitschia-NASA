@@ -1,13 +1,12 @@
-// scene.js — Imersão VR Única em Primeira Pessoa (FOV 98°), Escala Real e HUD Curvo
+// scene.js — Imersão VR Horizontal Unificada (3D + Letras + Notificações)
 window.WelwitschiaScene = (() => {
   const S = window.WelwitschiaShaders;
 
-  function initScene(container) {
+  function initScene(container, stage) {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020308);
     scene.fog = new THREE.FogExp2(0x050711, 0.0042);
 
-    // Campo de visão amplo (98°) típico de headsets VR para preenchimento periférico
     const camera = new THREE.PerspectiveCamera(98, window.innerWidth / window.innerHeight, 0.1, 600);
     camera.position.set(0, 1.65, 0);
     scene.add(camera);
@@ -226,7 +225,7 @@ window.WelwitschiaScene = (() => {
     });
     scene.add(domeGroup);
 
-    // --- PONTOS DE DESLOCAÇÃO (CAMINHAR PELA BASE EM 1ª PESSOA) ---
+    // --- PONTOS DE DESLOCAÇÃO ---
     const interactables = [];
     const waypoints = [
       { x: 0, z: 0, label: 'Centro da Base' },
@@ -430,15 +429,14 @@ window.WelwitschiaScene = (() => {
     scene.add(leakBeacon);
     interactables.push(leakBeacon);
 
-    // --- HUD CURVO HOLOGRÁFICO NO VISOR DO CAPACETE ---
+    // --- HUD CURVO HOLOGRÁFICO NO VISOR DO CAPACETE (SEMPRE HORIZONTAL JUNTO COM A CÂMARA) ---
     const hudCanvas = document.createElement('canvas');
     hudCanvas.width = 1024; hudCanvas.height = 512;
     const hudCtx = hudCanvas.getContext('2d');
     const hudTex = new THREE.CanvasTexture(hudCanvas);
 
-    // Cilindro curvo suave envolvente (estilo visor VR moderno)
     const hudGeo = new THREE.CylinderGeometry(2.4, 2.4, 1.35, 32, 1, true, Math.PI * 0.72, Math.PI * 0.56);
-    hudGeo.scale(-1, 1, 1); // Faces voltadas para dentro (para o astronauta)
+    hudGeo.scale(-1, 1, 1);
     const hudPlane = new THREE.Mesh(
       hudGeo,
       new THREE.MeshBasicMaterial({ map: hudTex, transparent: true, depthTest: false, side: THREE.DoubleSide })
@@ -446,7 +444,6 @@ window.WelwitschiaScene = (() => {
     hudPlane.raycast = () => {};
     camera.add(hudPlane);
 
-    // Mira central + Anel de Progresso Circular
     const reticleRing = new THREE.Mesh(
       new THREE.RingGeometry(0.018, 0.032, 32),
       new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide, depthTest: false })
@@ -522,14 +519,33 @@ window.WelwitschiaScene = (() => {
       hudTex.needsUpdate = true;
     }
 
-    // --- MOVIMENTO SUAVE DO ASTRONAUTA PELO CENÁRIO ---
+    // --- SINCRONIZAÇÃO HORIZONTAL DE TODO O PALCO (3D + LETRAS + NOTIFICAÇÕES) ---
+    let vrLandscapeActive = false;
+
+    function syncStageOrientation() {
+      let w = window.innerWidth;
+      let h = window.innerHeight;
+
+      if (vrLandscapeActive && h > w) {
+        stage.classList.add('force-landscape');
+        [w, h] = [h, w];
+      } else {
+        stage.classList.remove('force-landscape');
+      }
+
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h, false);
+      renderer.domElement.style.width = '100%';
+      renderer.domElement.style.height = '100%';
+    }
+
     const targetCamPos = new THREE.Vector3(0, 1.65, 0);
     function moveTo(x, z) {
       targetCamPos.set(x, 1.65, z);
     }
 
     function renderFrame() {
-      // Interpola suavemente a caminhada em baixa gravidade
       camera.position.lerp(targetCamPos, 0.06);
       renderer.render(scene, camera);
     }
@@ -565,11 +581,8 @@ window.WelwitschiaScene = (() => {
       }
     }
 
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+    window.addEventListener('resize', syncStageOrientation);
+    window.addEventListener('orientationchange', () => setTimeout(syncStageOrientation, 120));
 
     return {
       scene,
@@ -585,7 +598,12 @@ window.WelwitschiaScene = (() => {
       moveTo,
       updateHUD,
       updateAnimations,
-      renderFrame
+      renderFrame,
+      isForcedLandscape: () => stage.classList.contains('force-landscape'),
+      setVRLandscape: (enabled) => {
+        vrLandscapeActive = enabled;
+        syncStageOrientation();
+      }
     };
   }
 

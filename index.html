@@ -5,22 +5,41 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#050814">
   <link rel="manifest" href="./manifest.json">
-  <title>Welwitschia Lunar — Imersão VR & 360°</title>
+  <title>Welwitschia Lunar — Imersão VR Horizontal & 360°</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', system-ui, sans-serif; }
     
-    #canvas-container {
+    /* Palco único que contém o 3D, o visor do capacete e os controlos */
+    #vr-stage {
       position: fixed;
-      inset: 0;
+      top: 0; left: 0;
       width: 100vw;
       height: 100vh;
+      overflow: hidden;
+      transform-origin: center center;
+    }
+
+    /* Quando o telemóvel está em pé no Modo VR, roda TODO o palco (3D + letras + avisos) para horizontal */
+    #vr-stage.force-landscape {
+      width: 100vh;
+      height: 100vw;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(90deg);
+    }
+
+    #canvas-container {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
       touch-action: none;
     }
 
-    /* Moldura periférica do capacete espacial (ativa apenas no Modo Capacete VR) */
+    /* Moldura periférica do capacete espacial */
     #helmet-visor {
-      position: fixed;
+      position: absolute;
       inset: 0;
       pointer-events: none;
       z-index: 5;
@@ -61,7 +80,7 @@
       background: rgba(255, 255, 255, 0.14); color: #e2eeff; border: 1px solid rgba(255, 255, 255, 0.28);
     }
     #top-controls {
-      position: fixed; top: 12px; right: 12px; z-index: 15; display: none; gap: 8px;
+      position: absolute; top: 12px; right: 12px; z-index: 15; display: none; gap: 8px;
     }
     .mini-btn {
       background: rgba(10, 15, 30, 0.78); color: #fff; border: 1px solid rgba(255,255,255,0.28);
@@ -71,30 +90,31 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 </head>
 <body>
-  <div id="canvas-container"></div>
-  <div id="helmet-visor"></div>
+  <div id="vr-stage">
+    <div id="canvas-container"></div>
+    <div id="helmet-visor"></div>
+    <div id="top-controls">
+      <button id="btn-mute" class="mini-btn" type="button">🔊 Som</button>
+      <button id="btn-exit" class="mini-btn" type="button">Menu</button>
+    </div>
+  </div>
 
   <div id="vr-overlay">
     <div class="badge">NASA Space Apps Challenge 2026 • Angola</div>
     <h1>WELWITSCHIA LUNAR</h1>
     <p class="subtitle">Escolhe o teu modo de exploração lunar em primeira pessoa (FOV 98°):</p>
     <div class="btn-group">
-      <button id="btn-vr" type="button">🥽 Capacete Espacial (VR)</button>
+      <button id="btn-vr" type="button">🥽 Capacete Espacial (VR Horizontal)</button>
       <button id="btn-360" type="button">📱 Modo Ecrã 360°</button>
     </div>
   </div>
 
-  <div id="top-controls">
-    <button id="btn-mute" class="mini-btn" type="button">🔊 Som</button>
-    <button id="btn-exit" class="mini-btn" type="button">Menu</button>
-  </div>
-
-  <script src="./shaders.js?v=8"></script>
-  <script src="./scene.js?v=8"></script>
-  <script src="./game.js?v=8"></script>
+  <script src="./shaders.js?v=9"></script>
+  <script src="./scene.js?v=9"></script>
+  <script src="./game.js?v=9"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js?v=8').catch(() => {});
+      navigator.serviceWorker.register('./sw.js?v=9').catch(() => {});
     }
   </script>
 </body>

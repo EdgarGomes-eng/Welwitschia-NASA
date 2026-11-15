@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  *  WELWITSCHIA LUNAR — game.js
- *  Modo Capacete VR + Modo Ecrã 360° (Sem bloqueios de clique)
+ *  Modo Capacete VR (100% Horizontal) + Modo Ecrã 360°
  * ============================================================================
  */
 (() => {
@@ -142,6 +142,7 @@
     }
   }
 
+  const stage = document.getElementById('vr-stage');
   const container = document.getElementById('canvas-container');
   const visor = document.getElementById('helmet-visor');
   const overlay = document.getElementById('vr-overlay');
@@ -152,7 +153,7 @@
   const btnExit = document.getElementById('btn-exit');
 
   const audio = new AudioEngine();
-  const world = window.WelwitschiaScene.initScene(container);
+  const world = window.WelwitschiaScene.initScene(container, stage);
 
   const FACTS = [
     'A Lua está a 384 mil km da Terra. Cabiam 30 planetas Terra lado a lado!',
@@ -164,7 +165,7 @@
   ];
 
   const MOD_NAMES = ['Suporte de Vida', 'Blindagem Solar', 'Estufas', 'Laboratório'];
-  const SAVE_KEY = 'welwitschia-lunar-vr-v8';
+  const SAVE_KEY = 'welwitschia-lunar-vr-v9';
 
   const state = {
     T: 300,
@@ -319,7 +320,7 @@
     }
   }
 
-  // --- CONTROLO DE ORIENTAÇÃO (GIROSCÓPIO NO MODO VR + ARRASTAR NO MODO 360°) ---
+  // --- CONTROLO DE ORIENTAÇÃO (GIROSCÓPIO HORIZONTAL VR + ARRASTAR 360°) ---
   let useGyro = false;
   let gyroAvailable = false;
   let deviceAlpha = 0, deviceBeta = 90, deviceGamma = 0;
@@ -346,8 +347,13 @@
 
   window.addEventListener('pointermove', (e) => {
     if (!isDragging) return;
-    yaw -= (e.clientX - lastX) * 0.004;
-    pitch = Math.max(-1.3, Math.min(1.3, pitch - (e.clientY - lastY) * 0.004));
+    if (world.isForcedLandscape()) {
+      yaw -= (e.clientY - lastY) * 0.004;
+      pitch = Math.max(-1.3, Math.min(1.3, pitch + (e.clientX - lastX) * 0.004));
+    } else {
+      yaw -= (e.clientX - lastX) * 0.004;
+      pitch = Math.max(-1.3, Math.min(1.3, pitch - (e.clientY - lastY) * 0.004));
+    }
     lastX = e.clientX;
     lastY = e.clientY;
   });
@@ -356,9 +362,15 @@
     const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
     isDragging = false;
     if (moved < 12) {
-      const rect = container.getBoundingClientRect();
-      pointerVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      pointerVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      const w = window.innerWidth, h = window.innerHeight;
+      if (world.isForcedLandscape()) {
+        // Mapeia o toque para o palco rodado 90° na horizontal
+        pointerVec.x = (e.clientY / h) * 2 - 1;
+        pointerVec.y = (e.clientX / w) * 2 - 1;
+      } else {
+        pointerVec.x = (e.clientX / w) * 2 - 1;
+        pointerVec.y = -(e.clientY / h) * 2 + 1;
+      }
       raycaster.setFromCamera(pointerVec, world.camera);
       const hits = raycaster.intersectObjects(world.interactables, false);
       const hit = hits.find(h => h.object.visible);
@@ -376,7 +388,9 @@
       const alpha = THREE.MathUtils.degToRad(deviceAlpha);
       const beta = THREE.MathUtils.degToRad(deviceBeta);
       const gamma = THREE.MathUtils.degToRad(deviceGamma);
-      const orient = THREE.MathUtils.degToRad(window.orientation || 0);
+      // Compensa 90° quando o palco foi rodado via CSS para horizontal
+      const screenAngle = world.isForcedLandscape() ? 90 : (window.orientation || 0);
+      const orient = THREE.MathUtils.degToRad(screenAngle);
 
       euler.set(beta, alpha, -gamma, 'YXZ');
       q0.setFromEuler(euler);
@@ -424,23 +438,20 @@
     }
   }
 
-  // --- ABERTURA IMEDIATA DO MODO VR OU MODO 360° (SEM BLOQUEIOS) ---
   function openMode(isVR) {
-    // 1. Esconde o menu e mostra o cenário imediatamente
     overlay.classList.add('hidden');
     topControls.style.display = 'flex';
     visor.style.display = isVR ? 'block' : 'none';
     useGyro = isVR;
+    world.setVRLandscape(isVR);
 
-    // 2. Inicia áudio de forma segura
     try { audio.init(); } catch (_) {}
     audio.speak(
       isVR
-        ? 'Capacete espacial ativado! Vira a cabeça ou toca no ecrã para iniciar a missão.'
+        ? 'Capacete espacial ativado! Deita o telemóvel na horizontal nos óculos e inicia a missão.'
         : 'Modo 360 graus ativado! Desliza o dedo ou toca no botão verde para iniciar a missão.'
     );
 
-    // 3. Pede permissões de giroscópio / ecrã inteiro em segundo plano sem travar o UI
     if (isVR) {
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission().catch(() => {});
@@ -468,6 +479,7 @@
     visor.style.display = 'none';
     topControls.style.display = 'none';
     useGyro = false;
+    world.setVRLandscape(false);
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   });
 
