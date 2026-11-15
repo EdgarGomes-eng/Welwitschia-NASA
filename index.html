@@ -8,12 +8,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="./manifest.json">
-  <title>Welwitschia Lunar — Web Mobile VR & 360°</title>
+  <title>Welwitschia Lunar — Web Mobile VR & 360° (NASA Artemis Angola)</title>
   <script>
-    // Limpa caches antigas do Service Worker para garantir que a nova interface carrega logo
+    // Limpeza de caches antigas para atualização imediata
     if ('caches' in window) {
       caches.keys().then(keys => keys.forEach(k => {
-        if (k !== 'welwitschia-lunar-vr-v14') caches.delete(k);
+        if (k !== 'welwitschia-lunar-vr-v15') caches.delete(k);
       }));
     }
   </script>
@@ -34,6 +34,7 @@
       transform-origin: center center;
     }
 
+    /* Rotação unificada a todo o palco para telemóveis em modo retrato */
     #vr-stage.force-landscape {
       width: 100vh;
       height: 100vw;
@@ -65,7 +66,7 @@
       box-shadow: inset 0 0 55px rgba(0, 229, 255, 0.2);
     }
 
-    /* Barra superior blindada para nunca sair das bordas em nenhum ecrã */
+    /* Barra superior blindada e responsiva para qualquer ecrã */
     #hud-top-bar {
       position: absolute;
       top: 10px;
@@ -101,6 +102,7 @@
 
     #top-controls {
       display: flex;
+      flex-wrap: wrap;
       gap: 5px;
       pointer-events: auto;
       margin-left: auto;
@@ -109,6 +111,14 @@
       background: rgba(10, 15, 30, 0.88); color: #fff; border: 1px solid rgba(255,255,255,0.32);
       padding: 7px 10px; border-radius: 9px; font-size: 11px; font-weight: 700;
       cursor: pointer; white-space: nowrap;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .mini-btn:active { transform: scale(0.96); }
+
+    #btn-mode-toggle {
+      border-color: #00e5ff;
+      color: #00e5ff;
+      background: rgba(5, 24, 48, 0.92);
     }
 
     /* Caixa de Notificações Inferior com margem garantida de 12px de cada lado */
@@ -153,8 +163,8 @@
       padding: 6px 14px; border-radius: 99px; font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 12px;
     }
     h1 { font-size: clamp(24px, 6vw, 40px); font-weight: 800; letter-spacing: 1px; color: #fff; text-shadow: 0 0 24px rgba(79, 227, 255, 0.5); }
-    .subtitle { color: #b8d4ff; font-size: 14px; max-width: 460px; margin: 10px 0 22px; line-height: 1.45; }
-    .btn-group { display: flex; flex-direction: column; width: 100%; max-width: 340px; gap: 12px; }
+    .subtitle { color: #b8d4ff; font-size: 14px; max-width: 480px; margin: 10px 0 22px; line-height: 1.45; }
+    .btn-group { display: flex; flex-direction: column; width: 100%; max-width: 360px; gap: 12px; }
     .main-btn {
       border: none; border-radius: 14px; padding: 16px 20px; font-size: 15px; font-weight: 700;
       cursor: pointer; touch-action: manipulation;
@@ -168,7 +178,14 @@
       background: rgba(255, 255, 255, 0.15); color: #e2eeff; border: 1px solid rgba(255, 255, 255, 0.3);
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+  <!-- Biblioteca Three.js 100% Offline (Local com Fallback para CDN) -->
+  <script src="./three.min.js"></script>
+  <script>
+    if (typeof THREE === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"><\\/script>');
+    }
+  </script>
 </head>
 <body>
   <div id="vr-stage">
@@ -181,6 +198,7 @@
         <div class="tele-row-2" id="tele-r2">🌡️ BASE 20°C (FORA 127°C) • 🛡️ ESCUDO 100% • 🔬 CIÊNCIA 0/60</div>
       </div>
       <div id="top-controls">
+        <button id="btn-mode-toggle" class="mini-btn" type="button" title="Alternar entre Modo VR e Modo Normal 360°">🥽 Modo: VR [Ativo]</button>
         <button id="btn-fullscreen" class="mini-btn" type="button">⛶ Tela Cheia</button>
         <button id="btn-mute" class="mini-btn" type="button">🔊 Som</button>
         <button id="btn-exit" class="mini-btn" type="button">Menu</button>
@@ -193,19 +211,22 @@
   <div id="vr-overlay">
     <div class="badge">NASA Space Apps Challenge 2026 • Angola</div>
     <h1>WELWITSCHIA LUNAR</h1>
-    <p class="subtitle">Simulador Espacial Web Mobile. Entra em tela cheia na horizontal para explorar a base lunar:</p>
+    <p class="subtitle">Simulador Espacial Web Mobile do Polo Sul Lunar. O Modo VR Imersivo é o padrão ativo em todos os ambientes:</p>
     <div class="btn-group">
-      <button id="btn-vr" class="main-btn" type="button">🥽 Capacete Espacial VR (Horizontal)</button>
-      <button id="btn-360" class="main-btn" type="button">📱 Modo Ecrã 360° (Tela Cheia)</button>
+      <button id="btn-vr" class="main-btn" type="button">🥽 Entrar no Modo VR (Padrão Imersivo)</button>
+      <button id="btn-360" class="main-btn" type="button">📱 Entrar no Modo Normal 360°</button>
     </div>
   </div>
 
-  <script src="./shaders.js?v=14"></script>
-  <script src="./scene.js?v=14"></script>
-  <script src="./game.js?v=14"></script>
+  <!-- Módulos de Código Organizados e Sem Conflitos -->
+  <script src="./shaders.js?v=15"></script>
+  <script src="./lunar-exterior.js?v=15"></script>
+  <script src="./vr-base.js?v=15"></script>
+  <script src="./mission.js?v=15"></script>
+  <script src="./main.js?v=15"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js?v=14').then(reg => reg.update()).catch(() => {});
+      navigator.serviceWorker.register('./sw.js?v=15').then(reg => reg.update()).catch(() => {});
     }
   </script>
 </body>
