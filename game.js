@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  *  WELWITSCHIA LUNAR — game.js
- *  Experiência VR Imersiva em Primeira Pessoa (Visão Única Panorâmica 360°)
+ *  Modo Capacete VR + Modo Ecrã 360° (Sem bloqueios de clique)
  * ============================================================================
  */
 (() => {
@@ -145,7 +145,8 @@
   const container = document.getElementById('canvas-container');
   const visor = document.getElementById('helmet-visor');
   const overlay = document.getElementById('vr-overlay');
-  const btnEnter = document.getElementById('btn-enter');
+  const btnVR = document.getElementById('btn-vr');
+  const btn360 = document.getElementById('btn-360');
   const topControls = document.getElementById('top-controls');
   const btnMute = document.getElementById('btn-mute');
   const btnExit = document.getElementById('btn-exit');
@@ -163,7 +164,7 @@
   ];
 
   const MOD_NAMES = ['Suporte de Vida', 'Blindagem Solar', 'Estufas', 'Laboratório'];
-  const SAVE_KEY = 'welwitschia-lunar-vr-v7';
+  const SAVE_KEY = 'welwitschia-lunar-vr-v8';
 
   const state = {
     T: 300,
@@ -212,7 +213,7 @@
     world.startBtn.visible = false;
     world.startBtn.position.y = -50;
     refreshScreens();
-    say('Missão iniciada! Vira a cabeça para explorar a base e olhar para os anéis no chão para caminhar.');
+    say('Missão iniciada! Vira a cabeça ou desliza o ecrã para explorar a base e olhar para os anéis no chão.');
     state.noteT = 8;
   }
 
@@ -318,14 +319,15 @@
     }
   }
 
-  // --- HEAD TRACKING (GIROSCÓPIO EM TEMPO REAL) + ARRASTAR TOQUE/RATO ---
-  let gyroEnabled = false;
+  // --- CONTROLO DE ORIENTAÇÃO (GIROSCÓPIO NO MODO VR + ARRASTAR NO MODO 360°) ---
+  let useGyro = false;
+  let gyroAvailable = false;
   let deviceAlpha = 0, deviceBeta = 90, deviceGamma = 0;
   let yaw = 0, pitch = 0, isDragging = false, downX = 0, downY = 0, lastX = 0, lastY = 0;
 
   window.addEventListener('deviceorientation', (e) => {
     if (e.alpha !== null) {
-      gyroEnabled = true;
+      gyroAvailable = true;
       deviceAlpha = e.alpha;
       deviceBeta = e.beta;
       deviceGamma = e.gamma;
@@ -370,7 +372,7 @@
   const targetQuat = new THREE.Quaternion();
 
   function updateCameraOrientation() {
-    if (gyroEnabled) {
+    if (useGyro && gyroAvailable && !isDragging) {
       const alpha = THREE.MathUtils.degToRad(deviceAlpha);
       const beta = THREE.MathUtils.degToRad(deviceBeta);
       const gamma = THREE.MathUtils.degToRad(deviceGamma);
@@ -385,7 +387,6 @@
       euler.set(pitch, yaw, 0, 'YXZ');
       targetQuat.setFromEuler(euler);
     }
-    // Slerp suave para evitar tremores do sensor do telemóvel (conforto VR)
     world.camera.quaternion.slerp(targetQuat, 0.25);
   }
 
@@ -423,26 +424,39 @@
     }
   }
 
-  btnEnter.addEventListener('click', async () => {
-    audio.init();
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-      try { await DeviceOrientationEvent.requestPermission(); } catch (_) {}
-    }
-
-    if (document.documentElement.requestFullscreen) {
-      try {
-        await document.documentElement.requestFullscreen();
-        if (screen.orientation && screen.orientation.lock) {
-          await screen.orientation.lock('landscape').catch(() => {});
-        }
-      } catch (_) {}
-    }
-
+  // --- ABERTURA IMEDIATA DO MODO VR OU MODO 360° (SEM BLOQUEIOS) ---
+  function openMode(isVR) {
+    // 1. Esconde o menu e mostra o cenário imediatamente
     overlay.classList.add('hidden');
-    visor.style.display = 'block';
     topControls.style.display = 'flex';
-    audio.speak('Capacete espacial ativado! Vira a cabeça para explorar a Lua e inicia a missão.');
-  });
+    visor.style.display = isVR ? 'block' : 'none';
+    useGyro = isVR;
+
+    // 2. Inicia áudio de forma segura
+    try { audio.init(); } catch (_) {}
+    audio.speak(
+      isVR
+        ? 'Capacete espacial ativado! Vira a cabeça ou toca no ecrã para iniciar a missão.'
+        : 'Modo 360 graus ativado! Desliza o dedo ou toca no botão verde para iniciar a missão.'
+    );
+
+    // 3. Pede permissões de giroscópio / ecrã inteiro em segundo plano sem travar o UI
+    if (isVR) {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().catch(() => {});
+      }
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().then(() => {
+          if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('landscape').catch(() => {});
+          }
+        }).catch(() => {});
+      }
+    }
+  }
+
+  btnVR.addEventListener('click', () => openMode(true));
+  btn360.addEventListener('click', () => openMode(false));
 
   btnMute.addEventListener('click', () => {
     audio.setMuted(!audio.muted);
@@ -453,6 +467,7 @@
     overlay.classList.remove('hidden');
     visor.style.display = 'none';
     topControls.style.display = 'none';
+    useGyro = false;
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   });
 
