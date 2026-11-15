@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  *  WELWITSCHIA LUNAR — game.js
- *  Prioridade Web Mobile: Tela Cheia Síncrona, Modo VR Horizontal e Modo 360°
+ *  Web Mobile VR & 360° com HUD Retina Responsivo e Giroscópio Corrigido
  * ============================================================================
  */
 (() => {
@@ -148,7 +148,11 @@
   const overlay = document.getElementById('vr-overlay');
   const btnVR = document.getElementById('btn-vr');
   const btn360 = document.getElementById('btn-360');
-  const topControls = document.getElementById('top-controls');
+  const hudTopBar = document.getElementById('hud-top-bar');
+  const telemetryBox = document.getElementById('telemetry-box');
+  const teleR1 = document.getElementById('tele-r1');
+  const teleR2 = document.getElementById('tele-r2');
+  const hudNoteBox = document.getElementById('hud-note-box');
   const btnFullscreen = document.getElementById('btn-fullscreen');
   const btnMute = document.getElementById('btn-mute');
   const btnExit = document.getElementById('btn-exit');
@@ -166,7 +170,7 @@
   ];
 
   const MOD_NAMES = ['Suporte de Vida', 'Blindagem Solar', 'Estufas', 'Laboratório'];
-  const SAVE_KEY = 'welwitschia-lunar-vr-v10';
+  const SAVE_KEY = 'welwitschia-lunar-vr-v12';
 
   const state = {
     T: 300,
@@ -214,6 +218,7 @@
     state.started = true;
     world.startBtn.visible = false;
     world.startBtn.position.y = -50;
+    telemetryBox.style.display = 'block';
     refreshScreens();
     say('Missão iniciada! Vira a cabeça ou desliza o ecrã para explorar a base lunar.');
     state.noteT = 8;
@@ -233,7 +238,7 @@
 
     state.note = win
       ? `Missão Cumprida! Ciência: ${Math.round(state.sci)} • Estrelas: ${stars}/3`
-      : `${msg}\nToca ou olha para JOGAR DE NOVO!`;
+      : `${msg} — Toca ou olha para JOGAR DE NOVO!`;
     state.noteT = 999;
     audio.speak(win ? 'Missão cumprida! Parabéns, astronauta de Angola!' : msg);
 
@@ -321,7 +326,7 @@
     }
   }
 
-  // --- CONTROLO DE ORIENTAÇÃO MOBILE (GIROSCÓPIO + ARRASTAR) ---
+  // --- CONTROLO DE ORIENTAÇÃO MOBILE (GIROSCÓPIO NIVELADO + ARRASTAR) ---
   let useGyro = false;
   let gyroAvailable = false;
   let deviceAlpha = 0, deviceBeta = 90, deviceGamma = 0;
@@ -384,6 +389,8 @@
   const targetQuat = new THREE.Quaternion();
 
   function getScreenAngle() {
+    // Quando o iPhone tem o bloqueio vertical ligado e rodamos o palco 90° via CSS,
+    // o telemóvel foi deitado para a esquerda (-90° ou 90° conforme o dispositivo)
     if (world.isForcedLandscape()) return 90;
     if (screen.orientation && typeof screen.orientation.angle === 'number') {
       return screen.orientation.angle;
@@ -444,7 +451,7 @@
     }
   }
 
-  // --- ATIVAÇÃO DE TELA CHEIA (FULLSCREEN) SÍNCRONA NO GESTO DE CLIQUE MOBILE ---
+  // --- ATIVAÇÃO DE TELA CHEIA (FULLSCREEN) SÍNCRONA NO CLIQUE MOBILE ---
   function requestMobileFullscreen(lockLandscape) {
     const el = document.documentElement;
     const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
@@ -463,34 +470,29 @@
     }
   }
 
-  // Escuta mudanças de fullscreen para sincronizar
   document.addEventListener('fullscreenchange', () => {
     world.syncStageOrientation();
-    // Atualiza botão de fullscreen
     const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-    btnFullscreen.textContent = fsEl ? '⛶ Sair Tela Cheia' : '⛶ Tela Cheia';
+    btnFullscreen.textContent = fsEl ? '⛶ Normal' : '⛶ Tela Cheia';
   });
 
   function openMode(isVR) {
-    // 1. Pede Tela Cheia imediatamente no clique (regra obrigatória do Chrome/Android)
     requestMobileFullscreen(isVR);
 
-    // 2. Esconde o menu e ativa o palco
     overlay.classList.add('hidden');
-    topControls.style.display = 'flex';
+    hudTopBar.style.display = 'flex';
+    hudNoteBox.style.display = 'block';
     visor.style.display = isVR ? 'block' : 'none';
     useGyro = isVR;
     world.setVRLandscape(isVR);
 
-    // 3. Inicia áudio e voz PT-AO
     try { audio.init(); } catch (_) {}
     audio.speak(
       isVR
         ? 'Capacete espacial ativado! Deita o telemóvel na horizontal e inicia a missão.'
-        : 'Modo 360 graus em tela cheia ativado! Toca ou aponta para iniciar a missão.'
+        : 'Modo 360 graus ativado! Toca ou aponta para iniciar a missão.'
     );
 
-    // 4. Pedido de giroscópio para iOS
     if (isVR && typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       DeviceOrientationEvent.requestPermission().catch(() => {});
     }
@@ -517,7 +519,8 @@
   btnExit.addEventListener('click', () => {
     overlay.classList.remove('hidden');
     visor.style.display = 'none';
-    topControls.style.display = 'none';
+    hudTopBar.style.display = 'none';
+    hudNoteBox.style.display = 'none';
     useGyro = false;
     world.setVRLandscape(false);
     const exit = document.exitFullscreen || document.webkitExitFullscreen;
@@ -525,6 +528,26 @@
       exit.call(document).catch(() => {});
     }
   });
+
+  function renderHTMLHUD(isDay, cyclePct, te) {
+    if (state.started && !state.over) {
+      const cycleLabel = isDay ? '☀️ DIA' : '🌑 NOITE';
+      teleR1.textContent = `${cycleLabel} ${cyclePct}% • ⚡ BAT ${Math.round(state.bat)}% • 💨 O₂ ${Math.round(state.o2)}% • 🌱 COMIDA ${Math.round(state.food)}%`;
+      teleR2.textContent = `🌡️ BASE ${Math.round(state.ti)}°C (FORA ${Math.round(te)}°C) • 🛡️ ESCUDO ${Math.round(state.integ)}% • 🔬 CIÊNCIA ${Math.round(state.sci)}/60`;
+    }
+
+    const isAlert = state.alertT > 0 || (state.ev && state.ev.k === 'storm');
+    telemetryBox.classList.toggle('alert-border', isAlert);
+
+    const showNote = state.noteT > 0 || state.over;
+    if (showNote && state.note) {
+      hudNoteBox.style.display = 'block';
+      hudNoteBox.textContent = state.note;
+      hudNoteBox.classList.toggle('alert-mode', isAlert);
+    } else {
+      hudNoteBox.style.display = 'none';
+    }
+  }
 
   const clock = new THREE.Clock();
 
@@ -584,23 +607,7 @@
     updateCameraOrientation();
     updateGaze(dt);
     world.updateAnimations(elapsed, th);
-
-    world.updateHUD({
-      started: state.started,
-      over: state.over,
-      isDay: sn > 0,
-      cyclePct: Math.round((state.t / state.T) * 100),
-      bat: Math.round(state.bat),
-      o2: Math.round(state.o2),
-      food: Math.round(state.food),
-      ti: Math.round(state.ti),
-      te: Math.round(te),
-      integ: Math.round(state.integ),
-      sci: Math.round(state.sci),
-      note: state.noteT > 0 || state.over ? state.note : '',
-      alertFlash: state.alertT > 0 || (state.ev && state.ev.k === 'storm')
-    });
-
+    renderHTMLHUD(sn > 0, Math.round((state.t / state.T) * 100), te);
     world.renderFrame();
   }
 

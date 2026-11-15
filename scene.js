@@ -1,4 +1,4 @@
-// scene.js — Web Mobile VR Horizontal Unificado (3D + Alertas + HUD)
+// scene.js — Cenário Lunar 3D Otimizado para Web Mobile Horizontal & VR
 window.WelwitschiaScene = (() => {
   const S = window.WelwitschiaShaders;
 
@@ -7,7 +7,7 @@ window.WelwitschiaScene = (() => {
     scene.background = new THREE.Color(0x020308);
     scene.fog = new THREE.FogExp2(0x050711, 0.0042);
 
-    const camera = new THREE.PerspectiveCamera(98, window.innerWidth / window.innerHeight, 0.1, 600);
+    const camera = new THREE.PerspectiveCamera(82, window.innerWidth / window.innerHeight, 0.1, 600);
     camera.position.set(0, 1.65, 0);
     scene.add(camera);
 
@@ -386,7 +386,7 @@ window.WelwitschiaScene = (() => {
     });
 
     // --- BOTÕES 3D FLUTUANTES ---
-    function make3DButton(label, bgHex, w = 1.8, h = 0.55) {
+    function make3DButton(label, bgHex, w = 2.0, h = 0.6) {
       const c = document.createElement('canvas');
       c.width = 512; c.height = 160;
       const g = c.getContext('2d');
@@ -429,176 +429,16 @@ window.WelwitschiaScene = (() => {
     scene.add(leakBeacon);
     interactables.push(leakBeacon);
 
-    // --- HUD RESPONSIVO HOLOGRÁFICO (PLANO, SEMPRE HORIZONTAL) ---
-    let hudCanvas, hudCtx, hudTex, hudPlane, hudMaterial;
-    let currentHUDWidth = 0, currentHUDHeight = 0;
-
-    function createHUD() {
-      hudCanvas = document.createElement('canvas');
-      hudCtx = hudCanvas.getContext('2d');
-      hudTex = new THREE.CanvasTexture(hudCanvas);
-      hudTex.minFilter = THREE.LinearFilter;
-      hudTex.magFilter = THREE.LinearFilter;
-
-      hudMaterial = new THREE.MeshBasicMaterial({
-        map: hudTex,
-        transparent: true,
-        depthTest: false,
-        side: THREE.DoubleSide
-      });
-
-      // Plano plano (não cilíndrico) para evitar distorção de texto
-      const hudGeo = new THREE.PlaneGeometry(4.8, 2.7);
-      hudPlane = new THREE.Mesh(hudGeo, hudMaterial);
-      hudPlane.position.set(0, -0.15, -2.2);
-      hudPlane.rotation.x = -0.15; // Leve inclinação para baixo
-      hudPlane.raycast = () => {};
-      camera.add(hudPlane);
-    }
-
-    function updateHUDSize() {
-      const isForced = stage.classList.contains('force-landscape');
-      const w = isForced ? window.innerHeight : window.innerWidth;
-      const h = isForced ? window.innerWidth : window.innerHeight;
-
-      // Escala baseada na largura da tela, com limites mín/máx
-      const baseWidth = Math.min(Math.max(w * 1.2, 800), 1400);
-      const aspectRatio = 16 / 9; // Proporção 16:9 para HUD horizontal
-      const newWidth = Math.floor(baseWidth);
-      const newHeight = Math.floor(newWidth / aspectRatio);
-
-      if (newWidth !== currentHUDWidth || newHeight !== currentHUDHeight) {
-        currentHUDWidth = newWidth;
-        currentHUDHeight = newHeight;
-        hudCanvas.width = currentHUDWidth;
-        hudCanvas.height = currentHUDHeight;
-        hudTex.needsUpdate = true;
-      }
-    }
-
+    // Mira central limpa
     const reticleRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.018, 0.032, 32),
+      new THREE.RingGeometry(0.015, 0.028, 32),
       new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide, depthTest: false })
     );
     reticleRing.position.z = -1.5;
     reticleRing.raycast = () => {};
     camera.add(reticleRing);
 
-    // Inicializa HUD
-    createHUD();
-    updateHUDSize();
-
-    function drawWrappedText(ctx, text, centerX, startY, maxWidth, lineHeight, maxLines) {
-      const paragraphs = String(text).split('\n');
-      const allLines = [];
-
-      paragraphs.forEach(p => {
-        const words = p.split(' ');
-        let currentLine = '';
-        words.forEach(word => {
-          const testLine = currentLine ? `${currentLine} ${word}` : word;
-          if (ctx.measureText(testLine).width > maxWidth && currentLine) {
-            allLines.push(currentLine);
-            currentLine = word;
-          } else {
-            currentLine = testLine;
-          }
-        });
-        if (currentLine) allLines.push(currentLine);
-      });
-
-      // Limita número de linhas para não estourar a caixa
-      const linesToDraw = maxLines ? allLines.slice(0, maxLines) : allLines;
-      linesToDraw.forEach((line, i) => {
-        ctx.fillText(line, centerX, startY + i * lineHeight);
-      });
-
-      // Retorna se houve corte
-      return allLines.length > (maxLines || Infinity);
-    }
-
-    function updateHUD(state) {
-      const g = hudCtx;
-      const W = currentHUDWidth || 1024;
-      const H = currentHUDHeight || 512;
-      const cx = W / 2;
-
-      g.clearRect(0, 0, W, H);
-
-      // Escala responsiva baseada na largura
-      const scale = W / 1024;
-      const baseFont = Math.max(16, Math.min(24, 20 * scale));
-      const baseLineH = Math.max(22, Math.min(32, 28 * scale));
-      const padding = Math.max(20, Math.min(40, 40 * scale));
-      const boxW = W - padding * 2;
-      const boxX = padding;
-
-      if (state.started && !state.over) {
-        const topBoxH = Math.max(70, Math.min(100, 82 * scale));
-        const topBoxY = padding;
-
-        g.fillStyle = 'rgba(5, 14, 36, 0.78)';
-        g.fillRect(boxX, topBoxY, boxW, topBoxH);
-        g.strokeStyle = state.alertFlash ? '#ff3b3b' : 'rgba(0, 229, 255, 0.65)';
-        g.lineWidth = Math.max(2, 3 * scale);
-        g.strokeRect(boxX, topBoxY, boxW, topBoxH);
-
-        g.fillStyle = '#ffffff';
-        g.font = `bold ${baseFont}px sans-serif`;
-        g.textAlign = 'center';
-        const cycleLabel = state.isDay ? '☀️ DIA' : '🌑 NOITE';
-        const line1Y = topBoxY + topBoxH * 0.38;
-        const line2Y = topBoxY + topBoxH * 0.72;
-
-        // Texto da linha 1 com verificação de largura
-        const line1 = `${cycleLabel} ${state.cyclePct}%  •  ⚡ BAT ${state.bat}%  •  💨 O₂ ${state.o2}%  •  🌱 COMIDA ${state.food}%`;
-        if (g.measureText(line1).width > boxW - 20) {
-          // Versão compacta se não couber
-          g.fillText(
-            `${cycleLabel} ${state.cyclePct}%  •  ⚡ ${state.bat}%  •  💨 ${state.o2}%  •  🌱 ${state.food}%`,
-            cx, line1Y
-          );
-        } else {
-          g.fillText(line1, cx, line1Y);
-        }
-
-        g.fillStyle = '#ffd27a';
-        const line2 = `🌡️ BASE ${state.ti}°C (FORA ${state.te}°C)  •  🛡️ ESCUDO ${state.integ}%  •  🔬 CIÊNCIA ${state.sci}/60`;
-        if (g.measureText(line2).width > boxW - 20) {
-          g.fillText(
-            `🌡️ ${state.ti}°C (${state.te}°C)  •  🛡️ ${state.integ}%  •  🔬 ${state.sci}/60`,
-            cx, line2Y
-          );
-        } else {
-          g.fillText(line2, cx, line2Y);
-        }
-      }
-
-      if (state.note) {
-        const bottomBoxH = Math.max(100, Math.min(160, 114 * scale));
-        const bottomBoxY = H - bottomBoxH - padding;
-
-        g.fillStyle = state.alertFlash ? 'rgba(145, 15, 25, 0.92)' : 'rgba(5, 14, 36, 0.86)';
-        g.fillRect(boxX, bottomBoxY, boxW, bottomBoxH);
-        g.strokeStyle = state.alertFlash ? '#ff6b6b' : '#ffd27a';
-        g.lineWidth = Math.max(2, 3 * scale);
-        g.strokeRect(boxX, bottomBoxY, boxW, bottomBoxH);
-
-        g.fillStyle = '#fff8dc';
-        g.font = `bold ${Math.max(17, Math.min(24, 21 * scale))}px sans-serif`;
-        g.textAlign = 'center';
-
-        // Calcula maxLines baseado na altura disponível
-        const textAreaH = bottomBoxH - 24;
-        const maxLines = Math.max(2, Math.floor(textAreaH / baseLineH));
-        const startY = bottomBoxY + 20;
-
-        drawWrappedText(g, state.note, cx, startY, boxW - 32, baseLineH, maxLines);
-      }
-      hudTex.needsUpdate = true;
-    }
-
-    // --- DETEÇÃO PRECISA DE ORIENTAÇÃO MOBILE (RETRATO VS PAISAGEM) ---
+    // --- DETEÇÃO DE ORIENTAÇÃO MOBILE (RETRATO VS PAISAGEM) ---
     let vrLandscapeActive = false;
 
     function isDevicePortrait() {
@@ -612,7 +452,6 @@ window.WelwitschiaScene = (() => {
       let w = document.documentElement.clientWidth || window.innerWidth;
       let h = document.documentElement.clientHeight || window.innerHeight;
 
-      // Apenas aplica rotação CSS de 90° se o modo VR horizontal estiver ativo E o telemóvel estiver em pé
       if (vrLandscapeActive && isDevicePortrait()) {
         stage.classList.add('force-landscape');
         const maxDim = Math.max(w, h);
@@ -628,9 +467,6 @@ window.WelwitschiaScene = (() => {
       renderer.setSize(w, h, false);
       renderer.domElement.style.width = '100%';
       renderer.domElement.style.height = '100%';
-
-      // Atualiza tamanho do HUD quando a orientação muda
-      updateHUDSize();
     }
 
     const targetCamPos = new THREE.Vector3(0, 1.65, 0);
@@ -693,7 +529,6 @@ window.WelwitschiaScene = (() => {
       leakBeacon,
       reticleRing,
       moveTo,
-      updateHUD,
       updateAnimations,
       renderFrame,
       syncStageOrientation,
