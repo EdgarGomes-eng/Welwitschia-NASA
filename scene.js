@@ -1,4 +1,4 @@
-// scene.js — Imersão VR Horizontal Unificada (3D + Letras + Notificações)
+// scene.js — Web Mobile VR Horizontal Unificado (3D + Alertas + HUD)
 window.WelwitschiaScene = (() => {
   const S = window.WelwitschiaShaders;
 
@@ -429,7 +429,7 @@ window.WelwitschiaScene = (() => {
     scene.add(leakBeacon);
     interactables.push(leakBeacon);
 
-    // --- HUD CURVO HOLOGRÁFICO NO VISOR DO CAPACETE (SEMPRE HORIZONTAL JUNTO COM A CÂMARA) ---
+    // --- HUD CURVO HOLOGRÁFICO NO VISOR DO CAPACETE (100% HORIZONTAL) ---
     const hudCanvas = document.createElement('canvas');
     hudCanvas.width = 1024; hudCanvas.height = 512;
     const hudCtx = hudCanvas.getContext('2d');
@@ -519,16 +519,27 @@ window.WelwitschiaScene = (() => {
       hudTex.needsUpdate = true;
     }
 
-    // --- SINCRONIZAÇÃO HORIZONTAL DE TODO O PALCO (3D + LETRAS + NOTIFICAÇÕES) ---
+    // --- DETEÇÃO PRECISA DE ORIENTAÇÃO MOBILE (RETRATO VS PAISAGEM) ---
     let vrLandscapeActive = false;
 
-    function syncStageOrientation() {
-      let w = window.innerWidth;
-      let h = window.innerHeight;
+    function isDevicePortrait() {
+      if (window.matchMedia) {
+        return window.matchMedia('(orientation: portrait)').matches;
+      }
+      return window.innerHeight > window.innerWidth;
+    }
 
-      if (vrLandscapeActive && h > w) {
+    function syncStageOrientation() {
+      let w = document.documentElement.clientWidth || window.innerWidth;
+      let h = document.documentElement.clientHeight || window.innerHeight;
+
+      // Apenas aplica rotação CSS de 90° se o modo VR horizontal estiver ativo E o telemóvel estiver em pé
+      if (vrLandscapeActive && isDevicePortrait()) {
         stage.classList.add('force-landscape');
-        [w, h] = [h, w];
+        const maxDim = Math.max(w, h);
+        const minDim = Math.min(w, h);
+        w = maxDim;
+        h = minDim;
       } else {
         stage.classList.remove('force-landscape');
       }
@@ -582,7 +593,11 @@ window.WelwitschiaScene = (() => {
     }
 
     window.addEventListener('resize', syncStageOrientation);
-    window.addEventListener('orientationchange', () => setTimeout(syncStageOrientation, 120));
+    window.addEventListener('orientationchange', () => {
+      setTimeout(syncStageOrientation, 80);
+      setTimeout(syncStageOrientation, 300);
+    });
+    document.addEventListener('fullscreenchange', () => setTimeout(syncStageOrientation, 100));
 
     return {
       scene,
@@ -599,6 +614,7 @@ window.WelwitschiaScene = (() => {
       updateHUD,
       updateAnimations,
       renderFrame,
+      syncStageOrientation,
       isForcedLandscape: () => stage.classList.contains('force-landscape'),
       setVRLandscape: (enabled) => {
         vrLandscapeActive = enabled;

@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  *  WELWITSCHIA LUNAR — game.js
- *  Modo Capacete VR (100% Horizontal) + Modo Ecrã 360°
+ *  Prioridade Web Mobile: Tela Cheia Síncrona, Modo VR Horizontal e Modo 360°
  * ============================================================================
  */
 (() => {
@@ -149,6 +149,7 @@
   const btnVR = document.getElementById('btn-vr');
   const btn360 = document.getElementById('btn-360');
   const topControls = document.getElementById('top-controls');
+  const btnFullscreen = document.getElementById('btn-fullscreen');
   const btnMute = document.getElementById('btn-mute');
   const btnExit = document.getElementById('btn-exit');
 
@@ -165,7 +166,7 @@
   ];
 
   const MOD_NAMES = ['Suporte de Vida', 'Blindagem Solar', 'Estufas', 'Laboratório'];
-  const SAVE_KEY = 'welwitschia-lunar-vr-v9';
+  const SAVE_KEY = 'welwitschia-lunar-vr-v10';
 
   const state = {
     T: 300,
@@ -214,7 +215,7 @@
     world.startBtn.visible = false;
     world.startBtn.position.y = -50;
     refreshScreens();
-    say('Missão iniciada! Vira a cabeça ou desliza o ecrã para explorar a base e olhar para os anéis no chão.');
+    say('Missão iniciada! Vira a cabeça ou desliza o ecrã para explorar a base lunar.');
     state.noteT = 8;
   }
 
@@ -320,7 +321,7 @@
     }
   }
 
-  // --- CONTROLO DE ORIENTAÇÃO (GIROSCÓPIO HORIZONTAL VR + ARRASTAR 360°) ---
+  // --- CONTROLO DE ORIENTAÇÃO MOBILE (GIROSCÓPIO + ARRASTAR) ---
   let useGyro = false;
   let gyroAvailable = false;
   let deviceAlpha = 0, deviceBeta = 90, deviceGamma = 0;
@@ -364,7 +365,6 @@
     if (moved < 12) {
       const w = window.innerWidth, h = window.innerHeight;
       if (world.isForcedLandscape()) {
-        // Mapeia o toque para o palco rodado 90° na horizontal
         pointerVec.x = (e.clientY / h) * 2 - 1;
         pointerVec.y = (e.clientX / w) * 2 - 1;
       } else {
@@ -383,14 +383,20 @@
   const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
   const targetQuat = new THREE.Quaternion();
 
+  function getScreenAngle() {
+    if (world.isForcedLandscape()) return 90;
+    if (screen.orientation && typeof screen.orientation.angle === 'number') {
+      return screen.orientation.angle;
+    }
+    return window.orientation || 0;
+  }
+
   function updateCameraOrientation() {
     if (useGyro && gyroAvailable && !isDragging) {
       const alpha = THREE.MathUtils.degToRad(deviceAlpha);
       const beta = THREE.MathUtils.degToRad(deviceBeta);
       const gamma = THREE.MathUtils.degToRad(deviceGamma);
-      // Compensa 90° quando o palco foi rodado via CSS para horizontal
-      const screenAngle = world.isForcedLandscape() ? 90 : (window.orientation || 0);
-      const orient = THREE.MathUtils.degToRad(screenAngle);
+      const orient = THREE.MathUtils.degToRad(getScreenAngle());
 
       euler.set(beta, alpha, -gamma, 'YXZ');
       q0.setFromEuler(euler);
@@ -438,36 +444,62 @@
     }
   }
 
+  // --- ATIVAÇÃO DE TELA CHEIA (FULLSCREEN) SÍNCRONA NO GESTO DE CLIQUE MOBILE ---
+  function requestMobileFullscreen(lockLandscape) {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+    if (req) {
+      try {
+        const promise = req.call(el);
+        if (promise && promise.then) {
+          promise.then(() => {
+            if (lockLandscape && screen.orientation && screen.orientation.lock) {
+              screen.orientation.lock('landscape').catch(() => {});
+            }
+            world.syncStageOrientation();
+          }).catch(() => {});
+        }
+      } catch (_) {}
+    }
+  }
+
   function openMode(isVR) {
+    // 1. Pede Tela Cheia imediatamente no clique (regra obrigatória do Chrome/Android)
+    requestMobileFullscreen(isVR);
+
+    // 2. Esconde o menu e ativa o palco
     overlay.classList.add('hidden');
     topControls.style.display = 'flex';
     visor.style.display = isVR ? 'block' : 'none';
     useGyro = isVR;
     world.setVRLandscape(isVR);
 
+    // 3. Inicia áudio e voz PT-AO
     try { audio.init(); } catch (_) {}
     audio.speak(
       isVR
-        ? 'Capacete espacial ativado! Deita o telemóvel na horizontal nos óculos e inicia a missão.'
-        : 'Modo 360 graus ativado! Desliza o dedo ou toca no botão verde para iniciar a missão.'
+        ? 'Capacete espacial ativado! Deita o telemóvel na horizontal e inicia a missão.'
+        : 'Modo 360 graus em tela cheia ativado! Toca ou aponta para iniciar a missão.'
     );
 
-    if (isVR) {
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission().catch(() => {});
-      }
-      if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen().then(() => {
-          if (screen.orientation && screen.orientation.lock) {
-            screen.orientation.lock('landscape').catch(() => {});
-          }
-        }).catch(() => {});
-      }
+    // 4. Pedido de giroscópio para iOS
+    if (isVR && typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().catch(() => {});
     }
   }
 
   btnVR.addEventListener('click', () => openMode(true));
   btn360.addEventListener('click', () => openMode(false));
+
+  btnFullscreen.addEventListener('click', () => {
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!fsEl) {
+      requestMobileFullscreen(useGyro);
+    } else {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) exit.call(document).catch(() => {});
+    }
+  });
 
   btnMute.addEventListener('click', () => {
     audio.setMuted(!audio.muted);
@@ -480,7 +512,10 @@
     topControls.style.display = 'none';
     useGyro = false;
     world.setVRLandscape(false);
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit && (document.fullscreenElement || document.webkitFullscreenElement)) {
+      exit.call(document).catch(() => {});
+    }
   });
 
   const clock = new THREE.Clock();
