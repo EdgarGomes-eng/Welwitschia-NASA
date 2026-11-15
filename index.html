@@ -9,6 +9,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="./manifest.json">
   <title>Welwitschia Lunar — Web Mobile VR & 360°</title>
+  <script>
+    // Limpa caches antigas do Service Worker para garantir que a nova interface carrega logo
+    if ('caches' in window) {
+      caches.keys().then(keys => keys.forEach(k => {
+        if (k !== 'welwitschia-lunar-vr-v13') caches.delete(k);
+      }));
+    }
+  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -17,7 +25,6 @@
       position: fixed; inset: 0;
     }
     
-    /* Palco único que contém o 3D, o visor, o HUD e os alertas */
     #vr-stage {
       position: fixed;
       top: 0; left: 0;
@@ -27,7 +34,6 @@
       transform-origin: center center;
     }
 
-    /* Roda TODO o palco (3D + letras + alertas + botões) 90° para horizontal quando o iPhone/Android está em pé */
     #vr-stage.force-landscape {
       width: 100vh;
       height: 100vw;
@@ -44,7 +50,6 @@
       touch-action: none;
     }
 
-    /* Moldura periférica do capacete espacial */
     #helmet-visor {
       position: absolute;
       inset: 0;
@@ -60,79 +65,82 @@
       box-shadow: inset 0 0 55px rgba(0, 229, 255, 0.2);
     }
 
-    /* Barra superior com telemetria + botões */
+    /* Barra superior blindada para nunca sair das bordas em nenhum ecrã */
     #hud-top-bar {
       position: absolute;
-      top: max(10px, env(safe-area-inset-top));
-      left: 12px;
-      right: 12px;
+      top: 10px;
+      left: 10px;
+      right: 10px;
       z-index: 15;
       display: none;
+      flex-wrap: wrap;
       align-items: flex-start;
       justify-content: space-between;
-      gap: 8px;
+      gap: 6px;
       pointer-events: none;
     }
 
     #telemetry-box {
-      background: rgba(5, 14, 36, 0.84);
-      border: 1.5px solid rgba(0, 229, 255, 0.6);
-      border-radius: 12px;
-      padding: 8px 14px;
+      background: rgba(5, 14, 36, 0.88);
+      border: 1.5px solid rgba(0, 229, 255, 0.65);
+      border-radius: 10px;
+      padding: 6px 10px;
       color: #fff;
-      font-size: clamp(11px, 1.8vw, 14px);
-      line-height: 1.4;
-      backdrop-filter: blur(6px);
-      max-width: calc(100% - 210px);
+      font-size: 11px;
+      line-height: 1.35;
+      max-width: 100%;
+      overflow-wrap: break-word;
+      word-break: break-word;
     }
     #telemetry-box.alert-border {
       border-color: #ff4757;
-      box-shadow: 0 0 18px rgba(255, 71, 87, 0.45);
+      box-shadow: 0 0 16px rgba(255, 71, 87, 0.5);
     }
     .tele-row-1 { font-weight: 700; color: #ffffff; }
     .tele-row-2 { font-weight: 600; color: #ffd27a; margin-top: 2px; }
 
     #top-controls {
       display: flex;
-      gap: 6px;
+      gap: 5px;
       pointer-events: auto;
-      flex-shrink: 0;
+      margin-left: auto;
     }
     .mini-btn {
-      background: rgba(10, 15, 30, 0.85); color: #fff; border: 1px solid rgba(255,255,255,0.3);
-      padding: 8px 11px; border-radius: 10px; font-size: 12px; font-weight: 700;
-      cursor: pointer;
+      background: rgba(10, 15, 30, 0.88); color: #fff; border: 1px solid rgba(255,255,255,0.32);
+      padding: 7px 10px; border-radius: 9px; font-size: 11px; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
     }
 
-    /* Caixa de Notificações e Alertas Inferior — 100% responsiva e dentro das margens */
+    /* Caixa de Notificações Inferior com margem garantida de 12px de cada lado */
     #hud-note-box {
       position: absolute;
-      bottom: max(14px, env(safe-area-inset-bottom));
-      left: 50%;
-      transform: translateX(-50%);
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      margin: 0 auto;
+      max-width: 640px;
       z-index: 15;
       display: none;
-      width: min(92%, 680px);
-      background: rgba(5, 14, 36, 0.90);
+      background: rgba(5, 14, 36, 0.92);
       border: 2px solid #ffd27a;
-      border-radius: 14px;
-      padding: 10px 18px;
+      border-radius: 12px;
+      padding: 9px 14px;
       color: #fff8dc;
-      font-size: clamp(13px, 2.1vw, 16px);
+      font-size: 13px;
       font-weight: 700;
       text-align: center;
-      line-height: 1.38;
-      word-wrap: break-word;
+      line-height: 1.35;
+      overflow-wrap: break-word;
+      word-break: break-word;
       pointer-events: none;
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7);
     }
     #hud-note-box.alert-mode {
-      background: rgba(155, 16, 28, 0.94);
+      background: rgba(155, 16, 28, 0.95);
       border-color: #ff8a8a;
       color: #ffffff;
     }
 
-    /* Menu Inicial */
     #vr-overlay {
       position: fixed; inset: 0; z-index: 25;
       background: radial-gradient(circle at center, rgba(14, 28, 68, 0.92) 0%, rgba(2, 4, 12, 0.99) 100%);
@@ -192,12 +200,12 @@
     </div>
   </div>
 
-  <script src="./shaders.js?v=12"></script>
-  <script src="./scene.js?v=12"></script>
-  <script src="./game.js?v=12"></script>
+  <script src="./shaders.js?v=13"></script>
+  <script src="./scene.js?v=13"></script>
+  <script src="./game.js?v=13"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js?v=12').catch(() => {});
+      navigator.serviceWorker.register('./sw.js?v=13').then(reg => reg.update()).catch(() => {});
     }
   </script>
 </body>
