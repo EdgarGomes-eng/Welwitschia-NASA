@@ -1,243 +1,478 @@
-// scene.js — Cenário Lunar 3D Otimizado para Web Mobile Horizontal & VR
+// scene.js — Cenário Lunar 3D Fotorrealista do Polo Sul da Lua (Programa Artemis / Welwitschia 2032)
+// Otimizado para Web Mobile VR, Giroscópio 360° e 60 FPS com Sombras Nítidas e Física Visual PBR
 window.WelwitschiaScene = (() => {
   const S = window.WelwitschiaShaders;
 
   function initScene(container, stage) {
+    // 1. CENA & VÁCUO ESPACIAL ABSOLUTO (Sem atmosfera, fundo negro profundo)
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x020308);
-    scene.fog = new THREE.FogExp2(0x050711, 0.0042);
+    scene.background = new THREE.Color(0x000000);
 
-    const camera = new THREE.PerspectiveCamera(82, window.innerWidth / window.innerHeight, 0.1, 600);
+    // 2. CÂMERA DE PERSPECTIVA
+    const camera = new THREE.PerspectiveCamera(82, window.innerWidth / window.innerHeight, 0.1, 700);
     camera.position.set(0, 1.65, 0);
     scene.add(camera);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // 3. RENDERIZADOR WEBGL DE ALTA PERFORMANCE COM FILMIC TONE MAPPING
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance',
+      stencil: false
+    });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.25;
+    renderer.toneMappingExposure = 1.32;
     container.appendChild(renderer.domElement);
 
-    // --- ILUMINAÇÃO LUNAR DE ALTO CONTRASTE COM SOMBRAS ---
-    const sunLight = new THREE.DirectionalLight(0xfff6e5, 3.0);
-    sunLight.position.set(-42, 22, 18);
+    // 4. ILUMINAÇÃO ASTRONÓMICA DO POLO SUL LUNAR (Sol rasante a 5°-8° com sombras longas e nítidas)
+    const sunLight = new THREE.DirectionalLight(0xfffaee, 3.2);
+    sunLight.position.set(-48, 14, 22);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 1024;
-    sunLight.shadow.mapSize.height = 1024;
-    sunLight.shadow.camera.near = 5;
-    sunLight.shadow.camera.far = 110;
-    const d = 34;
-    sunLight.shadow.camera.left = -d;
-    sunLight.shadow.camera.right = d;
-    sunLight.shadow.camera.top = d;
-    sunLight.shadow.camera.bottom = -d;
-    sunLight.shadow.bias = -0.0008;
+
+    // Resolução e frustum de sombra calibrados
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 4;
+    sunLight.shadow.camera.far = 160;
+
+    const sf = 38;
+    sunLight.shadow.camera.left = -sf;
+    sunLight.shadow.camera.right = sf;
+    sunLight.shadow.camera.top = sf;
+    sunLight.shadow.camera.bottom = -sf;
+    sunLight.shadow.bias = -0.0004;
+    sunLight.shadow.normalBias = 0.02;
     scene.add(sunLight);
 
-    const hemiLight = new THREE.HemisphereLight(0x5b8cff, 0x1a1d26, 0.48);
+    // Luz de ricochete do regolito lunar (vácuo não tem luz de céu azul)
+    const ambientLight = new THREE.AmbientLight(0x0a0d16, 0.14);
+    scene.add(ambientLight);
+
+    // Luz secundária hemisférica (reflexo de terra e solo)
+    const hemiLight = new THREE.HemisphereLight(0x406090, 0x151820, 0.38);
     scene.add(hemiLight);
 
-    // --- CÉU ESTRELADO E PLANETA TERRA COM ATMOSFERA ---
+    // 5. CAMPO DE 3.500 ESTRELAS CIENTÍFICAS SEM CINTILAÇÃO (BufferGeometry Points)
+    const starCount = 3500;
+    const starRadius = 420;
     const starGeo = new THREE.BufferGeometry();
-    const starCount = 2400;
     const starPos = new Float32Array(starCount * 3);
     const starCol = new Float32Array(starCount * 3);
+
+    const cWhite = new THREE.Color(0xffffff);
+    const cBlueWhite = new THREE.Color(0xd0e2ff); // Estrelas quentes Classe O/B
+    const cPaleYellow = new THREE.Color(0xfff1cf); // Estrelas Classe G (como o Sol)
+    const cWarmRed = new THREE.Color(0xffd4c0);   // Gigantes frias
+
     for (let i = 0; i < starCount; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(Math.random() * 0.98);
-      const r = 340;
+      const u = Math.random();
+      const v = Math.random();
+      const theta = u * 2.0 * Math.PI;
+      const phi = Math.acos(Math.max(-0.95, Math.min(0.95, 2.0 * v - 1.0)));
+
+      const r = starRadius + (Math.random() - 0.5) * 40;
       starPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      starPos[i * 3 + 1] = r * Math.cos(phi);
+      starPos[i * 3 + 1] = Math.abs(r * Math.cos(phi)) + 8; // Mantém estrelas no céu visível
       starPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-      const b = 0.5 + Math.random() * 0.5;
-      starCol[i * 3] = b;
-      starCol[i * 3 + 1] = b * (0.92 + Math.random() * 0.08);
-      starCol[i * 3 + 2] = 1.0;
+
+      const rc = Math.random();
+      let chosen = cWhite;
+      if (rc < 0.28) chosen = cBlueWhite;
+      else if (rc < 0.60) chosen = cWhite;
+      else if (rc < 0.88) chosen = cPaleYellow;
+      else chosen = cWarmRed;
+
+      const mag = Math.pow(Math.random(), 1.6) * 0.75 + 0.25;
+      starCol[i * 3] = chosen.r * mag;
+      starCol[i * 3 + 1] = chosen.g * mag;
+      starCol[i * 3 + 2] = chosen.b * mag;
     }
     starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
     starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
-    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 1.5, sizeAttenuation: false, vertexColors: true, fog: false })));
 
-    const earthGroup = new THREE.Group();
-    earthGroup.position.set(-95, 68, -210);
-    const earthMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(15, 32, 32),
-      new THREE.MeshStandardMaterial({ map: S.createEarthTexture(), roughness: 0.65, metalness: 0.05 })
+    const starPoints = new THREE.Points(
+      starGeo,
+      new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true, depthWrite: false })
     );
-    const atmoMesh = new THREE.Mesh(new THREE.SphereGeometry(16.2, 32, 32), S.createAtmosphereMaterial());
-    earthGroup.add(earthMesh, atmoMesh);
+    scene.add(starPoints);
+
+    // 6. PLANETA TERRA NA PERSPECTIVA LUNAR COM TERMINADOR SOLAR E HALO FRESNEL
+    const earthGroup = new THREE.Group();
+    earthGroup.position.set(-105, 52, -230); // ~8.5° no horizonte
+
+    const earthRadius = 18.0;
+    const earthGeo = new THREE.SphereGeometry(earthRadius, 48, 48);
+    const dayTex = S.createEarthDayTexture();
+    const nightTex = S.createEarthNightTexture();
+
+    const sunDir = new THREE.Vector3().subVectors(sunLight.position, earthGroup.position).normalize();
+
+    const earthMat = new THREE.ShaderMaterial({
+      uniforms: {
+        dayTexture: { value: dayTex },
+        nightTexture: { value: nightTex },
+        sunDirection: { value: sunDir }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        void main() {
+          vUv = uv;
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D dayTexture;
+        uniform sampler2D nightTexture;
+        uniform vec3 sunDirection;
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        void main() {
+          vec3 n = normalize(vNormal);
+          float NdotL = dot(n, normalize(sunDirection));
+          float dayWeight = smoothstep(-0.12, 0.22, NdotL);
+          vec4 dayColor = texture2D(dayTexture, vUv);
+          vec4 nightColor = texture2D(nightTexture, vUv);
+          vec3 finalCol = mix(nightColor.rgb * 0.95, dayColor.rgb * 1.3, dayWeight);
+          gl_FragColor = vec4(finalCol, 1.0);
+        }
+      `
+    });
+
+    const earthMesh = new THREE.Mesh(earthGeo, earthMat);
+    earthMesh.rotation.z = 0.41; // Inclinação axial da Terra (23.44°)
+    earthMesh.rotation.y = 1.35;
+    earthGroup.add(earthMesh);
+
+    // Halo Atmosférico Rayleigh Azul
+    const atmoMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(earthRadius * 1.035, 40, 40),
+      S.createAtmosphereMaterial()
+    );
+    earthGroup.add(atmoMesh);
     scene.add(earthGroup);
 
-    // --- TERRENO LUNAR COM CRATERAS E MONTANHAS ---
-    const { map: regMap, bumpMap: regBump } = S.createLunarRegolithTextures();
-    const groundGeo = new THREE.PlaneGeometry(240, 240, 140, 140);
+    // 7. RELEVO LUNAR MULTI-CAMADAS COM CRATERAS PROCEDURAIS E PLATÔ DA BASE
+    const terrainSize = 260;
+    const terrainSegs = 150;
+    const groundGeo = new THREE.PlaneGeometry(terrainSize, terrainSize, terrainSegs, terrainSegs);
     groundGeo.rotateX(-Math.PI / 2);
     const posAttr = groundGeo.attributes.position;
 
-    const craters = [];
-    for (let i = 0; i < 28; i++) {
-      const ang = (i / 28) * Math.PI * 2 + (i % 3) * 0.4;
-      const dist = 26 + (i * 17) % 75;
-      craters.push({ x: Math.cos(ang) * dist, z: Math.sin(ang) * dist, r: 4 + (i % 9) * 1.3 });
-    }
+    // Definição das crateras principais ao redor da base
+    const craters = [
+      { x: -35, z: -42, r: 16, depth: 4.8 },
+      { x: 42, z: -38, r: 21, depth: 5.5 },
+      { x: 55, z: 48, r: 26, depth: 6.8 },
+      { x: -52, z: 45, r: 19, depth: 5.2 },
+      { x: -75, z: -10, r: 32, depth: 8.5 },
+      { x: 18, z: 62, r: 14, depth: 3.8 }
+    ];
 
     const getTerrainHeight = (x, z) => {
       const dist = Math.hypot(x, z);
-      const flatBase = Math.min(1, Math.max(0, (dist - 18) / 38));
-      let h = (S.fbm(x * 0.028, z * 0.028, 4) - 0.5) * 12 * flatBase;
-      h += (S.fbm(x * 0.14, z * 0.14, 2) - 0.5) * 0.8 * flatBase;
-      if (dist > 75) h += Math.pow((dist - 75) / 45, 1.8) * 24;
+      // Platô plano suave de 20m de raio para a Estação Welwitschia
+      const baseBlend = Math.min(1, Math.max(0, (dist - 14) / 32));
 
-      for (const c of craters) {
-        const dRatio = Math.hypot(x - c.x, z - c.z) / c.r;
-        if (dRatio < 1.45) {
-          if (dRatio < 1.0) h -= (1 - dRatio * dRatio) * c.r * 0.25;
-          h += Math.exp(-Math.pow((dRatio - 1.05) / 0.2, 2)) * c.r * 0.08;
+      let h = (S.fbm(x * 0.024, z * 0.024, 4) - 0.5) * 11.5 * baseBlend;
+      h += (S.simplex2D(x * 0.08, z * 0.08) * 0.6) * baseBlend;
+
+      // Cordilheira distante na borda da cratera Shackleton
+      if (dist > 78) {
+        h += Math.pow((dist - 78) / 45, 1.8) * 22;
+      }
+
+      // Morfologia das crateras (depressão côncava e borda ejetada elevada)
+      for (let i = 0; i < craters.length; i++) {
+        const c = craters[i];
+        const cd = Math.hypot(x - c.x, z - c.z);
+        const ratio = cd / c.r;
+        if (ratio < 1.45) {
+          if (ratio < 1.0) {
+            h -= (1.0 - ratio * ratio) * c.depth * baseBlend;
+          }
+          // Borda elevada
+          h += Math.exp(-Math.pow((ratio - 1.04) / 0.18, 2)) * (c.depth * 0.32) * baseBlend;
         }
       }
       return h;
     };
 
     for (let i = 0; i < posAttr.count; i++) {
-      const x = posAttr.getX(i), z = posAttr.getZ(i);
-      posAttr.setY(i, getTerrainHeight(x, z));
+      const vx = posAttr.getX(i);
+      const vz = posAttr.getZ(i);
+      posAttr.setY(i, getTerrainHeight(vx, vz));
     }
     groundGeo.computeVertexNormals();
 
-    const groundMesh = new THREE.Mesh(
-      groundGeo,
-      new THREE.MeshStandardMaterial({ map: regMap, bumpMap: regBump, bumpScale: 0.35, roughness: 0.92, metalness: 0.02 })
-    );
+    const { map: regMap, bumpMap: regBump, normalMap: regNorm, roughnessMap: regRough } = S.createLunarRegolithTextures();
+
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x484d53,
+      map: regMap,
+      bumpMap: regBump,
+      bumpScale: 0.42,
+      normalMap: regNorm,
+      normalScale: new THREE.Vector2(0.65, 0.65),
+      roughnessMap: regRough,
+      roughness: 0.92,
+      metalness: 0.04
+    });
+
+    const groundMesh = new THREE.Mesh(groundGeo, groundMat);
     groundMesh.receiveShadow = true;
     scene.add(groundMesh);
 
-    // --- ROCHAS LUNARES VIA INSTANCED MESH ---
-    const rockCount = 220;
-    const rockGeo = new THREE.DodecahedronGeometry(0.6, 1);
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x7d828c, bumpMap: regBump, bumpScale: 0.2, roughness: 0.95, flatShading: true });
-    const rocks = new THREE.InstancedMesh(rockGeo, rockMat, rockCount);
+    // 8. DEPÓSITOS DE GELO DE ÁGUA LUNAR (H2O) NO FUNDO DAS CRATERAS SOMBREADAS
+    const iceTexture = S.createIceDepositTexture();
+    const iceMat = new THREE.MeshStandardMaterial({
+      color: 0x93c5fd,
+      map: iceTexture,
+      roughness: 0.16,
+      metalness: 0.35,
+      emissive: 0x0f2b48,
+      emissiveIntensity: 0.38,
+      transparent: true,
+      opacity: 0.90
+    });
+
+    craters.forEach(c => {
+      const iceRadius = c.r * 0.42;
+      const iceGeo = new THREE.CircleGeometry(iceRadius, 24);
+      iceGeo.rotateX(-Math.PI / 2);
+      const iceMesh = new THREE.Mesh(iceGeo, iceMat);
+      const floorY = getTerrainHeight(c.x, c.z) + 0.12;
+      iceMesh.position.set(c.x, floorY, c.z);
+      iceMesh.receiveShadow = true;
+      scene.add(iceMesh);
+    });
+
+    // 9. ROCHAS BASÁLTICAS FACETADAS COM PERTURBAÇÃO DE VÉRTICES (GEOLOGIA REAL)
+    const rockCount = 260;
+    const baseRockGeo = new THREE.IcosahedronGeometry(0.7, 1);
+    const rPos = baseRockGeo.attributes.position;
+    const rv = new THREE.Vector3();
+    for (let i = 0; i < rPos.count; i++) {
+      rv.fromBufferAttribute(rPos, i);
+      const disp = 1.0 + S.simplex2D(rv.x * 2.8, rv.y * 2.8 + rv.z * 2.0) * 0.35;
+      rv.multiplyScalar(disp);
+      rPos.setXYZ(i, rv.x, rv.y, rv.z);
+    }
+    baseRockGeo.computeVertexNormals();
+
+    const rockMat = new THREE.MeshStandardMaterial({
+      color: 0x2e3238, // Basalto escuro lunar
+      roughness: 0.94,
+      metalness: 0.08,
+      flatShading: true
+    });
+
+    const rocks = new THREE.InstancedMesh(baseRockGeo, rockMat, rockCount);
     rocks.castShadow = true;
     rocks.receiveShadow = true;
-    const dummy = new THREE.Object3D();
+    const rockDummy = new THREE.Object3D();
+
     for (let i = 0; i < rockCount; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 13 + Math.random() * 68;
-      const rx = Math.cos(a) * r, rz = Math.sin(a) * r;
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 14 + Math.pow(Math.random(), 0.72) * 92;
+      const rx = Math.cos(ang) * dist;
+      const rz = Math.sin(ang) * dist;
       const ry = getTerrainHeight(rx, rz);
-      const sc = 0.25 + Math.pow(Math.random(), 2.4) * 1.8;
-      dummy.position.set(rx, ry + sc * 0.2, rz);
-      dummy.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
-      dummy.scale.set(sc * 1.3, sc * 0.75, sc);
-      dummy.updateMatrix();
-      rocks.setMatrixAt(i, dummy.matrix);
+
+      const sc = 0.28 + Math.pow(Math.random(), 2.2) * 2.4;
+      rockDummy.position.set(rx, ry + sc * 0.35, rz);
+      rockDummy.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+      rockDummy.scale.set(sc * 1.3, sc * 0.72, sc * 1.1);
+      rockDummy.updateMatrix();
+      rocks.setMatrixAt(i, rockDummy.matrix);
     }
     scene.add(rocks);
 
-    // --- MATERIAIS DA BASE LUNAR ---
-    const kaptonMat = new THREE.MeshStandardMaterial({ map: S.createKaptonGoldTexture(), metalness: 0.88, roughness: 0.22 });
-    const hullWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf0f4fa, metalness: 0.25, roughness: 0.35 });
-    const darkFrameMat = new THREE.MeshStandardMaterial({ color: 0x222938, metalness: 0.75, roughness: 0.3 });
-    const solarMat = new THREE.MeshStandardMaterial({ map: S.createSolarPanelTexture(), metalness: 0.65, roughness: 0.18, emissive: 0x061942, emissiveIntensity: 0.35 });
+    // 10. MATERIAIS AVANÇADOS DA BASE LUNAR (MLI Kapton, Titânio e Compósitos)
+    const kaptonMat = new THREE.MeshStandardMaterial({
+      map: S.createKaptonGoldTexture(),
+      metalness: 0.92,
+      roughness: 0.22
+    });
 
-    // Plataforma Central
+    const hullWhiteMat = new THREE.MeshStandardMaterial({
+      color: 0xf2f6fc,
+      metalness: 0.28,
+      roughness: 0.32
+    });
+
+    const titaniumMat = new THREE.MeshStandardMaterial({
+      color: 0x5a6575,
+      metalness: 0.88,
+      roughness: 0.26
+    });
+
+    const darkFrameMat = new THREE.MeshStandardMaterial({
+      color: 0x1b2029,
+      metalness: 0.82,
+      roughness: 0.38
+    });
+
+    const solarMat = new THREE.MeshStandardMaterial({
+      map: S.createSolarPanelTexture(),
+      metalness: 0.75,
+      roughness: 0.16,
+      emissive: 0x071e4d,
+      emissiveIntensity: 0.42
+    });
+
+    // Plataforma Sinterizada Central da Base
     const padGroup = new THREE.Group();
-    const padBase = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.5, 0.12, 32), darkFrameMat);
+    const padBase = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.9, 0.16, 36), darkFrameMat);
     padBase.receiveShadow = true;
     const padEmblem = new THREE.Mesh(
-      new THREE.CircleGeometry(2.8, 32),
-      new THREE.MeshStandardMaterial({ map: S.createMissionEmblemTexture(), roughness: 0.4, metalness: 0.2 })
+      new THREE.CircleGeometry(3.1, 36),
+      new THREE.MeshStandardMaterial({ map: S.createMissionEmblemTexture(), roughness: 0.35, metalness: 0.22 })
     );
     padEmblem.rotation.x = -Math.PI / 2;
-    padEmblem.position.y = 0.065;
+    padEmblem.position.y = 0.085;
     padEmblem.receiveShadow = true;
+
     const padRing = new THREE.Mesh(
-      new THREE.TorusGeometry(3.3, 0.07, 12, 48),
-      new THREE.MeshBasicMaterial({ color: 0x00e5ff })
+      new THREE.TorusGeometry(3.65, 0.08, 12, 48),
+      new THREE.MeshBasicMaterial({ color: 0x00f0ff })
     );
     padRing.rotation.x = Math.PI / 2;
-    padRing.position.y = 0.08;
+    padRing.position.y = 0.09;
+
     padGroup.add(padBase, padEmblem, padRing);
     scene.add(padGroup);
 
-    // Totem Frontal
+    // Faixas de pouso e balizas LED perimetrais
+    for (let i = 0; i < 8; i++) {
+      const bAng = (i / 8) * Math.PI * 2;
+      const bx = Math.cos(bAng) * 4.6;
+      const bz = Math.sin(bAng) * 4.6;
+      const beaconPost = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.45, 8), titaniumMat);
+      beaconPost.position.set(bx, 0.22, bz);
+      const beaconLed = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
+      beaconLed.position.set(bx, 0.46, bz);
+      padGroup.add(beaconPost, beaconLed);
+    }
+
+    // Totem Frontal com Emblema da Welwitschia 2032
     const bannerGroup = new THREE.Group();
-    bannerGroup.position.set(0, 0, -14.5);
-    const poleL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4.4, 12), darkFrameMat);
-    poleL.position.set(-2.1, 2.2, 0);
+    bannerGroup.position.set(0, 0, -14.8);
+    const poleL = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 4.6, 12), titaniumMat);
+    poleL.position.set(-2.2, 2.3, 0);
     const poleR = poleL.clone();
-    poleR.position.set(2.1, 2.2, 0);
+    poleR.position.set(2.2, 2.3, 0);
     const signBoard = new THREE.Mesh(
-      new THREE.BoxGeometry(4.0, 2.3, 0.14),
-      new THREE.MeshStandardMaterial({ map: S.createMissionEmblemTexture(), roughness: 0.3, metalness: 0.3 })
+      new THREE.BoxGeometry(4.2, 2.4, 0.16),
+      new THREE.MeshStandardMaterial({ map: S.createWelwitschiaEmblemTexture(), roughness: 0.28, metalness: 0.35 })
     );
-    signBoard.position.set(0, 3.1, 0);
+    signBoard.position.set(0, 3.2, 0);
     signBoard.castShadow = true;
     bannerGroup.add(poleL, poleR, signBoard);
     scene.add(bannerGroup);
 
-    // --- CÚPULA GEODÉSICA ILUMINADA COM PLANTAS WELWITSCHIA ---
+    // 11. CÚPULA GEODÉSICA BIOMÓRFICA COM ESTUFA WELWITSCHIA E LUZ DE CULTIVO
     const domeGroup = new THREE.Group();
-    domeGroup.position.set(8.5, 0, -7.5);
-    const domeBase = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.6, 0.45, 24), hullWhiteMat);
-    domeBase.position.y = 0.22;
+    domeGroup.position.set(8.8, 0, -7.8);
+
+    const domeBase = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.8, 0.5, 28), hullWhiteMat);
+    domeBase.position.y = 0.25;
     domeBase.castShadow = true;
     domeBase.receiveShadow = true;
 
+    // Cúpula de vidro duplo transparente com reflexo especular
     const glassDome = new THREE.Mesh(
-      new THREE.SphereGeometry(3.3, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.5),
+      new THREE.SphereGeometry(3.5, 32, 20, 0, Math.PI * 2, 0, Math.PI * 0.5),
       new THREE.MeshPhysicalMaterial({
-        color: 0xa8f5ff, transparent: true, opacity: 0.32,
-        roughness: 0.08, metalness: 0.1, side: THREE.DoubleSide
+        color: 0xb8f7ff,
+        transparent: true,
+        opacity: 0.35,
+        roughness: 0.06,
+        metalness: 0.12,
+        side: THREE.DoubleSide
       })
     );
-    glassDome.position.y = 0.4;
+    glassDome.position.y = 0.45;
 
-    const domeWire = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(3.33, 1),
-      new THREE.MeshBasicMaterial({ color: 0x5ce1e6, wireframe: true, transparent: true, opacity: 0.45 })
+    // Estrutura externa em treliça de titânio (Icosaedro)
+    const domeTruss = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(3.54, 1),
+      new THREE.MeshBasicMaterial({ color: 0x4fe3ff, wireframe: true, transparent: true, opacity: 0.45 })
     );
-    domeWire.position.y = 0.4;
+    domeTruss.position.y = 0.45;
 
-    const growLight = new THREE.PointLight(0xff4dff, 2.2, 12);
-    growLight.position.set(0, 2.4, 0);
-    domeGroup.add(domeBase, glassDome, domeWire, growLight);
+    // Luz de cultivo biológico (magenta bio-growth)
+    const growLight = new THREE.PointLight(0xff33cc, 2.4, 14);
+    growLight.position.set(0, 2.6, 0);
 
+    domeGroup.add(domeBase, glassDome, domeTruss, growLight);
+
+    // Plantas perenes Welwitschia mirabilis animadas
     const welwitschiaLeaves = [];
-    [-1.1, 0, 1.1].forEach((ox, idx) => {
-      const pGroup = new THREE.Group();
-      pGroup.position.set(ox, 0.45, (idx % 2 === 0 ? 0.5 : -0.5));
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.25, 12), new THREE.MeshStandardMaterial({ color: 0x6b4e31, roughness: 0.9 }));
-      pGroup.add(trunk);
+    [-1.2, 0, 1.2].forEach((ox, idx) => {
+      const plantGroup = new THREE.Group();
+      plantGroup.position.set(ox, 0.48, (idx % 2 === 0 ? 0.6 : -0.6));
+
+      const stem = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.3, 0.36, 0.28, 12),
+        new THREE.MeshStandardMaterial({ color: 0x5a3f24, roughness: 0.92 })
+      );
+      plantGroup.add(stem);
 
       for (let f = 0; f < 4; f++) {
         const leaf = new THREE.Mesh(
-          new THREE.BoxGeometry(1.45, 0.03, 0.22),
-          new THREE.MeshStandardMaterial({ color: f % 2 === 0 ? 0x52d649 : 0x7be843, emissive: 0x164212, roughness: 0.6 })
+          new THREE.BoxGeometry(1.55, 0.035, 0.24),
+          new THREE.MeshStandardMaterial({
+            color: f % 2 === 0 ? 0x48c73e : 0x72e03a,
+            emissive: 0x144010,
+            roughness: 0.55
+          })
         );
-        leaf.rotation.y = (f * Math.PI) / 2 + 0.3;
-        leaf.position.y = 0.16;
-        pGroup.add(leaf);
+        leaf.rotation.y = (f * Math.PI) / 2 + 0.32;
+        leaf.position.y = 0.18;
+        plantGroup.add(leaf);
         welwitschiaLeaves.push({ mesh: leaf, phase: f + idx });
       }
-      domeGroup.add(pGroup);
+      domeGroup.add(plantGroup);
     });
     scene.add(domeGroup);
 
-    // --- PONTOS DE DESLOCAÇÃO ---
+    // Antena Parabólica de Alto Ganho apontada para a Terra
+    const dishGroup = new THREE.Group();
+    dishGroup.position.set(-8.8, 0, -8.2);
+    const dishMast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 2.8, 12), titaniumMat);
+    dishMast.position.y = 1.4;
+    dishMast.castShadow = true;
+
+    const dishBowl = new THREE.Mesh(
+      new THREE.SphereGeometry(1.2, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.45),
+      kaptonMat
+    );
+    dishBowl.position.set(0, 2.9, 0);
+    dishBowl.rotation.x = 0.95;
+    dishBowl.rotation.y = -0.4;
+    dishBowl.castShadow = true;
+
+    dishGroup.add(dishMast, dishBowl);
+    scene.add(dishGroup);
+
+    // 12. PONTOS DE DESLOCAÇÃO (WAYPOINTS)
     const interactables = [];
     const waypoints = [
       { x: 0, z: 0, label: 'Centro da Base' },
       { x: -3.5, z: -4.2, label: 'Consolas Principais' },
-      { x: 4.5, z: -5.2, label: 'Perto da Estufa Welwitschia' },
+      { x: 4.5, z: -5.2, label: 'Estufa Welwitschia' },
       { x: -7.5, z: -1.5, label: 'Painéis Solares' }
     ];
 
     waypoints.forEach(wp => {
       const ring = new THREE.Mesh(
-        new THREE.RingGeometry(0.45, 0.68, 32),
-        new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide, transparent: true, opacity: 0.78 })
+        new THREE.RingGeometry(0.48, 0.72, 32),
+        new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide, transparent: true, opacity: 0.82 })
       );
       ring.rotation.x = -Math.PI / 2;
       ring.position.set(wp.x, 0.08, wp.z);
@@ -246,17 +481,18 @@ window.WelwitschiaScene = (() => {
       interactables.push(ring);
     });
 
-    // --- PAINÉIS SOLARES INTERATIVOS ---
+    // 13. PAINÉIS SOLARES VERTICAIS INTERATIVOS
     const solarPanels = [];
     for (let i = 0; i < 4; i++) {
       const pGroup = new THREE.Group();
-      pGroup.position.set(-11.5, 0, -6 + i * 4.2);
-      const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.15, 1.5, 10), darkFrameMat);
-      stand.position.y = 0.75;
+      pGroup.position.set(-11.8, 0, -6.5 + i * 4.4);
+
+      const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 1.8, 12), titaniumMat);
+      stand.position.y = 0.9;
       stand.castShadow = true;
 
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.1, 3.4), solarMat.clone());
-      panel.position.y = 1.85;
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.4, 3.6), solarMat.clone());
+      panel.position.y = 2.1;
       panel.rotation.z = -0.45;
       panel.castShadow = true;
       panel.userData = { type: 'solar', index: i };
@@ -267,7 +503,7 @@ window.WelwitschiaScene = (() => {
       interactables.push(panel);
     }
 
-    // --- OS 4 MÓDULOS DA BASE COM ECRÃS HOLOGRÁFICOS ---
+    // 14. OS 4 MÓDULOS DA BASE COM ECRÃS HOLOGRÁFICOS INTERATIVOS
     const MODULE_DEFS = [
       { name: 'Suporte de Vida', color: '#00e5ff', hex: 0x00e5ff },
       { name: 'Blindagem Solar', color: '#ff9e2c', hex: 0xff9e2c },
@@ -281,7 +517,7 @@ window.WelwitschiaScene = (() => {
     MODULE_DEFS.forEach((mod, i) => {
       const deg = -68 + i * 45;
       const rad = (deg * Math.PI) / 180;
-      const dist = 8.2;
+      const dist = 8.4;
       const mx = Math.sin(rad) * dist;
       const mz = -Math.cos(rad) * dist;
       modulePositions.push(new THREE.Vector3(mx, 0, mz));
@@ -290,103 +526,141 @@ window.WelwitschiaScene = (() => {
       mGroup.position.set(mx, 0, mz);
       mGroup.rotation.y = -rad;
 
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.35, 0.65, 20), kaptonMat);
-      base.position.y = 0.325;
-      base.castShadow = true;
-      base.receiveShadow = true;
+      // Base com blindagem térmica MLI dourada
+      const mBase = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.4, 0.7, 24), kaptonMat);
+      mBase.position.y = 0.35;
+      mBase.castShadow = true;
+      mBase.receiveShadow = true;
 
-      const consoleBox = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.95, 0.55), hullWhiteMat);
-      consoleBox.position.set(0, 1.05, 0);
+      // Consola mecânica de bordo
+      const consoleBox = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, 0.6), hullWhiteMat);
+      consoleBox.position.set(0, 1.1, 0);
       consoleBox.castShadow = true;
 
+      // Tela holográfica flutuante
       const holoData = S.createHoloScreenCanvas(mod.name, mod.color);
       const holoPlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(2.1, 1.32),
+        new THREE.PlaneGeometry(2.2, 1.38),
         new THREE.MeshBasicMaterial({ map: holoData.texture, transparent: true, side: THREE.DoubleSide })
       );
-      holoPlane.position.set(0, 2.15, 0.15);
+      holoPlane.position.set(0, 2.25, 0.16);
       holoPlane.userData = { type: 'module', index: i };
 
-      const modLight = new THREE.PointLight(mod.hex, 1.1, 7);
-      modLight.position.set(0, 2.2, 0.6);
+      const modLight = new THREE.PointLight(mod.hex, 1.2, 7.5);
+      modLight.position.set(0, 2.3, 0.65);
 
-      mGroup.add(base, consoleBox, holoPlane, modLight);
+      mGroup.add(mBase, consoleBox, holoPlane, modLight);
       scene.add(mGroup);
 
       moduleScreens.push(holoData);
       interactables.push(holoPlane);
     });
 
-    // --- ROVER LUNAR AUTÓNOMO ---
+    // 15. ROVER LUNAR TRIPULADO NASA ARTEMIS / LTV COM 6 RODAS ARTICULADAS
     const roverGroup = new THREE.Group();
-    const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.42, 1.9), kaptonMat);
-    chassis.position.y = 0.65;
+
+    // Chassi estrutural em fibra de carbono
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.46, 2.4), darkFrameMat);
+    chassis.position.y = 0.72;
     chassis.castShadow = true;
 
-    const topDeck = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.12, 1.75), hullWhiteMat);
-    topDeck.position.y = 0.92;
-    topDeck.castShadow = true;
+    // Carenagem MLI dourada
+    const mliDeck = new THREE.Mesh(new THREE.BoxGeometry(1.44, 0.22, 2.2), kaptonMat);
+    mliDeck.position.set(0, 0.98, 0);
+    mliDeck.castShadow = true;
 
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.85, 10), darkFrameMat);
-    mast.position.set(0, 1.35, 0.55);
-    const camHead = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.22, 0.26), hullWhiteMat);
-    camHead.position.set(0, 1.78, 0.58);
+    // Mastro frontal Mastcam estereoscópico
+    const mastPole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.95, 10), titaniumMat);
+    mastPole.position.set(0, 1.45, 0.82);
+    const mastHead = new THREE.Group();
+    mastHead.position.set(0, 1.95, 0.85);
 
-    const sensorEye = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.08, 0.05), new THREE.MeshBasicMaterial({ color: 0x00f0ff }));
-    sensorEye.position.set(0, 1.78, 0.71);
+    const camBox = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.24, 0.28), hullWhiteMat);
+    const lensL = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.08, 12), darkFrameMat);
+    lensL.rotation.x = Math.PI / 2;
+    lensL.position.set(-0.15, 0, 0.15);
+    const lensR = lensL.clone();
+    lensR.position.x = 0.15;
+    const ledEye = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.04), new THREE.MeshBasicMaterial({ color: 0x00f0ff }));
+    ledEye.position.set(0, 0.06, 0.15);
+    mastHead.add(camBox, lensL, lensR, ledEye);
 
-    const roverSpot = new THREE.SpotLight(0xdff4ff, 3.5, 24, 0.55, 0.4);
-    roverSpot.position.set(0, 1.1, 0.95);
-    roverSpot.target.position.set(0, 0.2, 7);
+    // Faróis frontais de longo alcance com cone volumétrico
+    const roverSpot = new THREE.SpotLight(0xf0f8ff, 4.2, 32, 0.65, 0.35);
+    roverSpot.position.set(0, 1.15, 1.15);
+    roverSpot.target.position.set(0, 0.2, 8.5);
     roverGroup.add(roverSpot, roverSpot.target);
 
+    // 6 Rodas com banda de rodagem (treads/grousers)
     const wheels = [];
-    [[-0.78, 0.72], [0.78, 0.72], [-0.78, -0.72], [0.78, -0.72]].forEach(([wx, wz]) => {
-      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.26, 16), darkFrameMat);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(wx, 0.34, wz);
-      wheel.castShadow = true;
-      roverGroup.add(wheel);
-      wheels.push(wheel);
+    const wheelPositions = [
+      [-0.85, 0.85], [0.85, 0.85],   // Dianteiras
+      [-0.88, 0.0],  [0.88, 0.0],    // Centrais
+      [-0.85, -0.85], [0.85, -0.85]  // Traseiras
+    ];
+
+    wheelPositions.forEach(([wx, wz]) => {
+      const wheelGroup = new THREE.Group();
+      wheelGroup.position.set(wx, 0.38, wz);
+
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.28, 18), darkFrameMat);
+      rim.rotation.z = Math.PI / 2;
+      rim.castShadow = true;
+
+      // Aro de titânio
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.29, 12), titaniumMat);
+      hub.rotation.z = Math.PI / 2;
+
+      wheelGroup.add(rim, hub);
+      roverGroup.add(wheelGroup);
+      wheels.push(wheelGroup);
     });
 
-    roverGroup.add(chassis, topDeck, mast, camHead, sensorEye);
+    roverGroup.add(chassis, mliDeck, mastPole, mastHead);
     scene.add(roverGroup);
 
-    // --- ASTRONAUTAS ANIMADOS ---
+    // 16. ASTRONAUTAS TRIPULADOS COM FÍSICA LUNAR SUAVE (1/6 G)
     const astronauts = [];
-    const visorMat = new THREE.MeshStandardMaterial({ color: 0xffb703, metalness: 0.96, roughness: 0.08, emissive: 0x3b2300, emissiveIntensity: 0.4 });
+    const visorMat = new THREE.MeshStandardMaterial({
+      color: 0xffb703,
+      metalness: 0.98,
+      roughness: 0.04,
+      emissive: 0x3d2400,
+      emissiveIntensity: 0.45
+    });
+
     [[-4.2, -5.2, 0.6], [4.5, -5.8, -0.7]].forEach(([ax, az, rotY], idx) => {
       const aGroup = new THREE.Group();
       aGroup.position.set(ax, 0, az);
       aGroup.rotation.y = rotY;
 
-      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.65, 0.32), hullWhiteMat);
-      torso.position.y = 1.05;
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.68, 0.34), hullWhiteMat);
+      torso.position.y = 1.08;
       torso.castShadow = true;
 
-      const backpack = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.58, 0.22), kaptonMat);
-      backpack.position.set(0, 1.08, -0.25);
+      // Mochila de suporte de vida (PLSS)
+      const plss = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.62, 0.24), kaptonMat);
+      plss.position.set(0, 1.1, -0.26);
 
-      const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 16), hullWhiteMat);
-      helmet.position.y = 1.58;
+      const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.25, 18, 18), hullWhiteMat);
+      helmet.position.y = 1.62;
       helmet.castShadow = true;
 
-      const visor = new THREE.Mesh(new THREE.SphereGeometry(0.20, 16, 12, 0, Math.PI), visorMat);
-      visor.position.set(0, 1.58, 0.07);
+      const visor = new THREE.Mesh(new THREE.SphereGeometry(0.21, 18, 14, 0, Math.PI), visorMat);
+      visor.position.set(0, 1.62, 0.08);
 
-      const legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.72, 0.18), hullWhiteMat);
-      legL.position.set(-0.13, 0.36, 0);
+      const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.74, 0.2), hullWhiteMat);
+      legL.position.set(-0.14, 0.37, 0);
       const legR = legL.clone();
-      legR.position.set(0.13, 0.36, 0);
+      legR.position.set(0.14, 0.37, 0);
 
-      aGroup.add(torso, backpack, helmet, visor, legL, legR);
+      aGroup.add(torso, plss, helmet, visor, legL, legR);
       scene.add(aGroup);
-      astronauts.push({ group: aGroup, phase: idx * 2.5 });
+      astronauts.push({ group: aGroup, phase: idx * 2.8 });
     });
 
-    // --- BOTÕES 3D FLUTUANTES ---
-    function make3DButton(label, bgHex, w = 2.0, h = 0.6) {
+    // 17. BOTÕES 3D FLUTUANTES (INICIAR MISSÃO / JOGAR DE NOVO / BALIZA)
+    function make3DButton(label, bgHex, w = 2.2, h = 0.65) {
       const c = document.createElement('canvas');
       c.width = 512; c.height = 160;
       const g = c.getContext('2d');
@@ -396,23 +670,24 @@ window.WelwitschiaScene = (() => {
       g.lineWidth = 8;
       g.strokeRect(6, 6, 500, 148);
       g.fillStyle = '#ffffff';
-      g.font = 'bold 38px sans-serif';
+      g.font = 'bold 36px sans-serif';
       g.textAlign = 'center';
-      g.fillText(label, 256, 95);
+      g.fillText(label, 256, 96);
 
+      const tex = new THREE.CanvasTexture(c);
       return new THREE.Mesh(
         new THREE.BoxGeometry(w, h, 0.12),
-        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c) })
+        new THREE.MeshBasicMaterial({ map: tex })
       );
     }
 
-    const startBtn = make3DButton('INICIAR MISSÃO', '#18a84c', 2.2, 0.65);
+    const startBtn = make3DButton('INICIAR MISSÃO', '#18a84c', 2.3, 0.68);
     startBtn.position.set(0, 1.55, -3.2);
     startBtn.userData = { type: 'start' };
     scene.add(startBtn);
     interactables.push(startBtn);
 
-    const restartBtn = make3DButton('JOGAR DE NOVO', '#2a5cff', 2.1, 0.62);
+    const restartBtn = make3DButton('JOGAR DE NOVO', '#2a5cff', 2.2, 0.65);
     restartBtn.position.set(0, -50, 0);
     restartBtn.visible = false;
     restartBtn.userData = { type: 'restart' };
@@ -420,7 +695,7 @@ window.WelwitschiaScene = (() => {
     interactables.push(restartBtn);
 
     const leakBeacon = new THREE.Mesh(
-      new THREE.SphereGeometry(0.45, 16, 16),
+      new THREE.SphereGeometry(0.48, 16, 16),
       new THREE.MeshBasicMaterial({ color: 0xff2a2a })
     );
     leakBeacon.position.set(0, -50, 0);
@@ -429,7 +704,7 @@ window.WelwitschiaScene = (() => {
     scene.add(leakBeacon);
     interactables.push(leakBeacon);
 
-    // Mira central limpa
+    // Retículo / Mira Central VR
     const reticleRing = new THREE.Mesh(
       new THREE.RingGeometry(0.015, 0.028, 32),
       new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide, depthTest: false })
@@ -438,7 +713,7 @@ window.WelwitschiaScene = (() => {
     reticleRing.raycast = () => {};
     camera.add(reticleRing);
 
-    // --- DETEÇÃO DE ORIENTAÇÃO MOBILE (RETRATO VS PAISAGEM) ---
+    // 18. GESTÃO DE ORIENTAÇÃO MOBILE (RETRATO VS PAISAGEM VR)
     let vrLandscapeActive = false;
 
     function isDevicePortrait() {
@@ -479,31 +754,50 @@ window.WelwitschiaScene = (() => {
       renderer.render(scene, camera);
     }
 
+    // 19. ATUALIZAÇÃO CONTÍNUA DE ANIMAÇÕES E FÍSICA VISUAL
     function updateAnimations(elapsed, sunAngle) {
       const sn = Math.sin(sunAngle);
-      sunLight.position.set(-45 * Math.cos(sunAngle), Math.max(sn * 32, -4), 18);
-      sunLight.intensity = 3.0 * Math.max(0, Math.min(1, sn * 3.5)) + 0.05;
-      hemiLight.intensity = 0.16 + 0.36 * Math.max(0, Math.min(1, (sn + 0.15) * 2.5));
+      // Sol rasante orbital no Polo Sul
+      sunLight.position.set(-48 * Math.cos(sunAngle), Math.max(sn * 28, -3), 20);
+      sunLight.intensity = 3.2 * Math.max(0, Math.min(1, sn * 3.5)) + 0.05;
+      hemiLight.intensity = 0.14 + 0.38 * Math.max(0, Math.min(1, (sn + 0.15) * 2.5));
 
-      earthMesh.rotation.y = elapsed * 0.03;
+      // Atualiza direção do sol no shader da Terra
+      const sDir = new THREE.Vector3().subVectors(sunLight.position, earthGroup.position).normalize();
+      if (earthMat.uniforms.sunDirection) {
+        earthMat.uniforms.sunDirection.value.copy(sDir);
+      }
+      earthMesh.rotation.y = elapsed * 0.025;
 
-      const rAngle = elapsed * 0.14;
-      const rDist = 16.5;
+      // Patrulha do Rover Lunar adaptado ao relevo do solo
+      const rAngle = elapsed * 0.13;
+      const rDist = 17.5;
       const rx = Math.cos(rAngle) * rDist;
       const rz = Math.sin(rAngle) * rDist;
       const ry = getTerrainHeight(rx, rz);
       roverGroup.position.set(rx, ry, rz);
-      roverGroup.rotation.y = -rAngle;
-      wheels.forEach(w => { w.rotation.x += 0.04; });
+      roverGroup.rotation.y = -rAngle + Math.PI / 2;
 
-      astronauts.forEach(a => {
-        a.group.position.y = Math.abs(Math.sin(elapsed * 1.4 + a.phase)) * 0.14;
+      // Rotação física das rodas com a velocidade
+      wheels.forEach(w => {
+        w.children.forEach(c => { c.rotation.x += 0.045; });
       });
 
+      // Mastro da câmara faz varrimento exploratório suave
+      mastHead.rotation.y = Math.sin(elapsed * 1.2) * 0.45;
+
+      // Movimentação suave dos astronautas (salto rítmico em gravidade lunar)
+      astronauts.forEach(a => {
+        a.group.position.y = Math.abs(Math.sin(elapsed * 1.5 + a.phase)) * 0.16;
+        a.group.rotation.x = Math.sin(elapsed * 1.5 + a.phase) * 0.05;
+      });
+
+      // Folhas da Welwitschia ondulando suavemente no ar da estufa
       welwitschiaLeaves.forEach(l => {
         l.mesh.rotation.z = Math.sin(elapsed * 1.8 + l.phase) * 0.06;
       });
 
+      // Alarme de fuga piscando
       if (leakBeacon.visible) {
         const sc = 1 + Math.sin(elapsed * 9) * 0.35;
         leakBeacon.scale.set(sc, sc, sc);

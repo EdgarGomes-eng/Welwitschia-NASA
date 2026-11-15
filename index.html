@@ -13,7 +13,7 @@
     // Limpa caches antigas do Service Worker para garantir que a nova interface carrega logo
     if ('caches' in window) {
       caches.keys().then(keys => keys.forEach(k => {
-        if (k !== 'welwitschia-lunar-vr-v13') caches.delete(k);
+        if (k !== 'welwitschia-lunar-vr-v14') caches.delete(k);
       }));
     }
   </script>
@@ -200,12 +200,12 @@
     </div>
   </div>
 
-  <script src="./shaders.js?v=13"></script>
-  <script src="./scene.js?v=13"></script>
-  <script src="./game.js?v=13"></script>
+  <script src="./shaders.js?v=14"></script>
+  <script src="./scene.js?v=14"></script>
+  <script src="./game.js?v=14"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js?v=13').then(reg => reg.update()).catch(() => {});
+      navigator.serviceWorker.register('./sw.js?v=14').then(reg => reg.update()).catch(() => {});
     }
   </script>
 </body>

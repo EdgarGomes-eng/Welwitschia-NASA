@@ -170,7 +170,7 @@
   ];
 
   const MOD_NAMES = ['Suporte de Vida', 'Blindagem Solar', 'Estufas', 'Laboratório'];
-  const SAVE_KEY = 'welwitschia-lunar-vr-v12';
+  const SAVE_KEY = 'welwitschia-lunar-vr-v14';
 
   const state = {
     T: 300,
