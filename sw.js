@@ -1,10 +1,10 @@
-const CACHE_NAME = 'welwitschia-lunar-vr-v12';
+const CACHE_NAME = 'welwitschia-lunar-vr-v13';
 const ASSETS = [
   './',
   './index.html',
-  './shaders.js?v=12',
-  './scene.js?v=12',
-  './game.js?v=12',
+  './shaders.js?v=13',
+  './scene.js?v=13',
+  './game.js?v=13',
   './manifest.json',
   'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js'
 ];
